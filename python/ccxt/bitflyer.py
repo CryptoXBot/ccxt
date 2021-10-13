@@ -7,6 +7,7 @@ from ccxt.base.exchange import Exchange
 from ccxt.base.errors import ExchangeError
 from ccxt.base.errors import ArgumentsRequired
 from ccxt.base.errors import OrderNotFound
+from ccxt.base.precise import Precise
 
 
 class bitflyer(Exchange):
@@ -21,7 +22,7 @@ class bitflyer(Exchange):
             'hostname': 'bitflyer.com',  # or bitflyer.com
             'has': {
                 'cancelOrder': True,
-                'CORS': False,
+                'CORS': None,
                 'createOrder': True,
                 'fetchBalance': True,
                 'fetchClosedOrders': 'emulated',
@@ -89,12 +90,8 @@ class bitflyer(Exchange):
             },
             'fees': {
                 'trading': {
-                    'maker': 0.2 / 100,
-                    'taker': 0.2 / 100,
-                },
-                'BTC/JPY': {
-                    'maker': 0.15 / 100,
-                    'taker': 0.15 / 100,
+                    'maker': self.parse_number('0.002'),
+                    'taker': self.parse_number('0.002'),
                 },
             },
         })
@@ -183,8 +180,8 @@ class bitflyer(Exchange):
             currencyId = self.safe_string(balance, 'currency_code')
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['total'] = self.safe_float(balance, 'amount')
-            account['free'] = self.safe_float(balance, 'available')
+            account['total'] = self.safe_string(balance, 'amount')
+            account['free'] = self.safe_string(balance, 'available')
             result[code] = account
         return self.parse_balance(result)
 
@@ -194,25 +191,21 @@ class bitflyer(Exchange):
             'product_code': self.market_id(symbol),
         }
         orderbook = self.publicGetGetboard(self.extend(request, params))
-        return self.parse_order_book(orderbook, None, 'bids', 'asks', 'price', 'size')
+        return self.parse_order_book(orderbook, symbol, None, 'bids', 'asks', 'price', 'size')
 
-    def fetch_ticker(self, symbol, params={}):
-        self.load_markets()
-        request = {
-            'product_code': self.market_id(symbol),
-        }
-        ticker = self.publicGetGetticker(self.extend(request, params))
+    def parse_ticker(self, ticker, market=None):
+        symbol = self.safe_symbol(None, market)
         timestamp = self.parse8601(self.safe_string(ticker, 'timestamp'))
-        last = self.safe_float(ticker, 'ltp')
+        last = self.safe_number(ticker, 'ltp')
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
             'high': None,
             'low': None,
-            'bid': self.safe_float(ticker, 'best_bid'),
+            'bid': self.safe_number(ticker, 'best_bid'),
             'bidVolume': None,
-            'ask': self.safe_float(ticker, 'best_ask'),
+            'ask': self.safe_number(ticker, 'best_ask'),
             'askVolume': None,
             'vwap': None,
             'open': None,
@@ -222,10 +215,19 @@ class bitflyer(Exchange):
             'change': None,
             'percentage': None,
             'average': None,
-            'baseVolume': self.safe_float(ticker, 'volume_by_product'),
+            'baseVolume': self.safe_number(ticker, 'volume_by_product'),
             'quoteVolume': None,
             'info': ticker,
         }
+
+    def fetch_ticker(self, symbol, params={}):
+        self.load_markets()
+        market = self.market(symbol)
+        request = {
+            'product_code': market['id'],
+        }
+        response = self.publicGetGetticker(self.extend(request, params))
+        return self.parse_ticker(response, market)
 
     def parse_trade(self, trade, market=None):
         side = self.safe_string_lower(trade, 'side')
@@ -240,12 +242,11 @@ class bitflyer(Exchange):
         if order is None:
             order = self.safe_string(trade, 'child_order_acceptance_id')
         timestamp = self.parse8601(self.safe_string(trade, 'exec_date'))
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'size')
-        cost = None
-        if amount is not None:
-            if price is not None:
-                cost = price * amount
+        priceString = self.safe_string(trade, 'price')
+        amountString = self.safe_string(trade, 'size')
+        price = self.parse_number(priceString)
+        amount = self.parse_number(amountString)
+        cost = self.parse_number(Precise.string_mul(priceString, amountString))
         id = self.safe_string(trade, 'id')
         symbol = None
         if market is not None:
@@ -314,18 +315,17 @@ class bitflyer(Exchange):
 
     def parse_order(self, order, market=None):
         timestamp = self.parse8601(self.safe_string(order, 'child_order_date'))
-        amount = self.safe_float(order, 'size')
-        remaining = self.safe_float(order, 'outstanding_size')
-        filled = self.safe_float(order, 'executed_size')
-        price = self.safe_float(order, 'price')
-        cost = price * filled
+        amount = self.safe_number(order, 'size')
+        remaining = self.safe_number(order, 'outstanding_size')
+        filled = self.safe_number(order, 'executed_size')
+        price = self.safe_number(order, 'price')
         status = self.parse_order_status(self.safe_string(order, 'child_order_state'))
         type = self.safe_string_lower(order, 'child_order_type')
         side = self.safe_string_lower(order, 'side')
         marketId = self.safe_string(order, 'product_code')
         symbol = self.safe_symbol(marketId, market)
         fee = None
-        feeCost = self.safe_float(order, 'total_commission')
+        feeCost = self.safe_number(order, 'total_commission')
         if feeCost is not None:
             fee = {
                 'cost': feeCost,
@@ -333,7 +333,7 @@ class bitflyer(Exchange):
                 'rate': None,
             }
         id = self.safe_string(order, 'child_order_acceptance_id')
-        return {
+        return self.safe_order({
             'id': id,
             'clientOrderId': None,
             'info': order,
@@ -348,14 +348,14 @@ class bitflyer(Exchange):
             'side': side,
             'price': price,
             'stopPrice': None,
-            'cost': cost,
+            'cost': None,
             'amount': amount,
             'filled': filled,
             'remaining': remaining,
             'fee': fee,
             'average': None,
             'trades': None,
-        }
+        })
 
     def fetch_orders(self, symbol=None, since=None, limit=100, params={}):
         if symbol is None:
@@ -406,7 +406,7 @@ class bitflyer(Exchange):
         response = self.privateGetGetexecutions(self.extend(request, params))
         return self.parse_trades(response, market, since, limit)
 
-    def fetch_positions(self, symbols=None, since=None, limit=None, params={}):
+    def fetch_positions(self, symbols=None, params={}):
         if symbols is None:
             raise ArgumentsRequired(self.id + ' fetchPositions() requires a `symbols` argument, exactly one symbol in an array')
         self.load_markets()
@@ -460,7 +460,7 @@ class bitflyer(Exchange):
         if method == 'GET':
             if params:
                 request += '?' + self.urlencode(params)
-        baseUrl = self.implode_params(self.urls['api'], {'hostname': self.hostname})
+        baseUrl = self.implode_hostname(self.urls['api'])
         url = baseUrl + request
         if api == 'private':
             self.check_required_credentials()

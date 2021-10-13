@@ -4,6 +4,7 @@
 
 const Exchange = require ('./base/Exchange');
 const { ExchangeError, ArgumentsRequired, AuthenticationError, RateLimitExceeded, InvalidNonce } = require ('./base/errors');
+const Precise = require ('./base/Precise');
 
 // ----------------------------------------------------------------------------
 
@@ -20,35 +21,38 @@ module.exports = class coinbase extends Exchange {
                 'CB-VERSION': '2018-05-30',
             },
             'has': {
+                'cancelOrder': undefined,
                 'CORS': true,
-                'cancelOrder': false,
                 'createDepositAddress': true,
-                'createOrder': false,
-                'deposit': false,
+                'createOrder': undefined,
+                'deposit': undefined,
                 'fetchBalance': true,
-                'fetchClosedOrders': false,
+                'fetchBidsAsks': undefined,
+                'fetchClosedOrders': undefined,
                 'fetchCurrencies': true,
-                'fetchDepositAddress': false,
-                'fetchMarkets': true,
-                'fetchMyTrades': false,
-                'fetchOHLCV': false,
-                'fetchOpenOrders': false,
-                'fetchOrder': false,
-                'fetchOrderBook': false,
-                'fetchL2OrderBook': false,
-                'fetchLedger': true,
-                'fetchOrders': false,
-                'fetchTicker': true,
-                'fetchTickers': false,
-                'fetchTime': true,
-                'fetchBidsAsks': false,
-                'fetchTrades': false,
-                'withdraw': false,
-                'fetchTransactions': false,
+                'fetchDepositAddress': undefined,
                 'fetchDeposits': true,
-                'fetchWithdrawals': true,
-                'fetchMySells': true,
+                'fetchIndexOHLCV': false,
+                'fetchL2OrderBook': undefined,
+                'fetchLedger': true,
+                'fetchMarkets': true,
+                'fetchMarkOHLCV': false,
                 'fetchMyBuys': true,
+                'fetchMySells': true,
+                'fetchMyTrades': undefined,
+                'fetchOHLCV': undefined,
+                'fetchOpenOrders': undefined,
+                'fetchOrder': undefined,
+                'fetchOrderBook': undefined,
+                'fetchOrders': undefined,
+                'fetchPremiumIndexOHLCV': false,
+                'fetchTicker': true,
+                'fetchTickers': undefined,
+                'fetchTime': true,
+                'fetchTrades': undefined,
+                'fetchTransactions': undefined,
+                'fetchWithdrawals': true,
+                'withdraw': undefined,
             },
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/1294454/40811661-b6eceae2-653a-11e8-829e-10bfadb078cf.jpg',
@@ -411,10 +415,10 @@ module.exports = class coinbase extends Exchange {
         const timestamp = this.parse8601 (this.safeValue (transaction, 'created_at'));
         const updated = this.parse8601 (this.safeValue (transaction, 'updated_at'));
         const type = this.safeString (transaction, 'resource');
-        const amount = this.safeFloat (subtotalObject, 'amount');
+        const amount = this.safeNumber (subtotalObject, 'amount');
         const currencyId = this.safeString (subtotalObject, 'currency');
         const currency = this.safeCurrencyCode (currencyId);
-        const feeCost = this.safeFloat (feeObject, 'amount');
+        const feeCost = this.safeNumber (feeObject, 'amount');
         const feeCurrencyId = this.safeString (feeObject, 'currency');
         const feeCurrency = this.safeCurrencyCode (feeCurrencyId);
         const fee = {
@@ -490,15 +494,12 @@ module.exports = class coinbase extends Exchange {
         const orderId = undefined;
         const side = this.safeString (trade, 'resource');
         const type = undefined;
-        const cost = this.safeFloat (subtotalObject, 'amount');
-        const amount = this.safeFloat (amountObject, 'amount');
-        let price = undefined;
-        if (cost !== undefined) {
-            if ((amount !== undefined) && (amount > 0)) {
-                price = cost / amount;
-            }
-        }
-        const feeCost = this.safeFloat (feeObject, 'amount');
+        const costString = this.safeString (subtotalObject, 'amount');
+        const amountString = this.safeString (amountObject, 'amount');
+        const cost = this.parseNumber (costString);
+        const amount = this.parseNumber (amountString);
+        const price = this.parseNumber (Precise.stringDiv (costString, amountString));
+        const feeCost = this.safeNumber (feeObject, 'amount');
         const feeCurrencyId = this.safeString (feeObject, 'currency');
         const feeCurrency = this.safeCurrencyCode (feeCurrencyId);
         const fee = {
@@ -566,7 +567,7 @@ module.exports = class coinbase extends Exchange {
                                 'max': undefined,
                             },
                             'cost': {
-                                'min': this.safeFloat (quoteCurrency, 'min_size'),
+                                'min': this.safeNumber (quoteCurrency, 'min_size'),
                                 'max': undefined,
                             },
                         },
@@ -648,15 +649,7 @@ module.exports = class coinbase extends Exchange {
                 'precision': undefined,
                 'limits': {
                     'amount': {
-                        'min': this.safeFloat (currency, 'min_size'),
-                        'max': undefined,
-                    },
-                    'price': {
-                        'min': undefined,
-                        'max': undefined,
-                    },
-                    'cost': {
-                        'min': undefined,
+                        'min': this.safeNumber (currency, 'min_size'),
                         'max': undefined,
                     },
                     'withdraw': {
@@ -679,9 +672,9 @@ module.exports = class coinbase extends Exchange {
         const buy = await this.publicGetPricesSymbolBuy (request);
         const sell = await this.publicGetPricesSymbolSell (request);
         const spot = await this.publicGetPricesSymbolSpot (request);
-        const ask = this.safeFloat (buy['data'], 'amount');
-        const bid = this.safeFloat (sell['data'], 'amount');
-        const last = this.safeFloat (spot['data'], 'amount');
+        const ask = this.safeNumber (buy['data'], 'amount');
+        const bid = this.safeNumber (sell['data'], 'amount');
+        const last = this.safeNumber (spot['data'], 'amount');
         return {
             'symbol': symbol,
             'timestamp': timestamp,
@@ -721,21 +714,23 @@ module.exports = class coinbase extends Exchange {
         const result = { 'info': response };
         for (let b = 0; b < balances.length; b++) {
             const balance = balances[b];
-            if (this.inArray (balance['type'], accounts)) {
-                const currencyId = this.safeString (balance['balance'], 'currency');
-                const code = this.safeCurrencyCode (currencyId);
-                const total = this.safeFloat (balance['balance'], 'amount');
-                const free = total;
-                const used = undefined;
-                if (code in result) {
-                    result[code]['free'] = this.sum (result[code]['free'], total);
-                    result[code]['total'] = this.sum (result[code]['total'], total);
-                } else {
-                    const account = {
-                        'free': free,
-                        'used': used,
-                        'total': total,
-                    };
+            const type = this.safeString (balance, 'type');
+            if (this.inArray (type, accounts)) {
+                const value = this.safeValue (balance, 'balance');
+                if (value !== undefined) {
+                    const currencyId = this.safeString (value, 'currency');
+                    const code = this.safeCurrencyCode (currencyId);
+                    const total = this.safeString (value, 'amount');
+                    const free = total;
+                    let account = this.safeValue (result, code);
+                    if (account === undefined) {
+                        account = this.account ();
+                        account['free'] = free;
+                        account['total'] = total;
+                    } else {
+                        account['free'] = Precise.stringAdd (account['free'], total);
+                        account['total'] = Precise.stringAdd (account['total'], total);
+                    }
                     result[code] = account;
                 }
             }
@@ -1025,7 +1020,7 @@ module.exports = class coinbase extends Exchange {
         //     }
         //
         const amountInfo = this.safeValue (item, 'amount', {});
-        let amount = this.safeFloat (amountInfo, 'amount');
+        let amount = this.safeNumber (amountInfo, 'amount');
         let direction = undefined;
         if (amount < 0) {
             direction = 'out';
@@ -1051,7 +1046,7 @@ module.exports = class coinbase extends Exchange {
         if (feeInfo !== undefined) {
             const feeCurrencyId = this.safeString (feeInfo, 'currency');
             const feeCurrencyCode = this.safeCurrencyCode (feeCurrencyId, currency);
-            const feeAmount = this.safeFloat (feeInfo, 'amount');
+            const feeAmount = this.safeNumber (feeInfo, 'amount');
             fee = {
                 'cost': feeAmount,
                 'currency': feeCurrencyCode,
@@ -1145,23 +1140,36 @@ module.exports = class coinbase extends Exchange {
         }
         const url = this.urls['api'] + fullPath;
         if (api === 'private') {
-            this.checkRequiredCredentials ();
-            const nonce = this.nonce ().toString ();
-            let payload = '';
-            if (method !== 'GET') {
-                if (Object.keys (query).length) {
-                    body = this.json (query);
-                    payload = body;
+            const authorization = this.safeString (this.headers, 'Authorization');
+            if (authorization !== undefined) {
+                headers = {
+                    'Authorization': authorization,
+                    'Content-Type': 'application/json',
+                };
+            } else if (this.token) {
+                headers = {
+                    'Authorization': 'Bearer ' + this.token,
+                    'Content-Type': 'application/json',
+                };
+            } else {
+                this.checkRequiredCredentials ();
+                const nonce = this.nonce ().toString ();
+                let payload = '';
+                if (method !== 'GET') {
+                    if (Object.keys (query).length) {
+                        body = this.json (query);
+                        payload = body;
+                    }
                 }
+                const auth = nonce + method + fullPath + payload;
+                const signature = this.hmac (this.encode (auth), this.encode (this.secret));
+                headers = {
+                    'CB-ACCESS-KEY': this.apiKey,
+                    'CB-ACCESS-SIGN': signature,
+                    'CB-ACCESS-TIMESTAMP': nonce,
+                    'Content-Type': 'application/json',
+                };
             }
-            const auth = nonce + method + fullPath + payload;
-            const signature = this.hmac (this.encode (auth), this.encode (this.secret));
-            headers = {
-                'CB-ACCESS-KEY': this.apiKey,
-                'CB-ACCESS-SIGN': signature,
-                'CB-ACCESS-TIMESTAMP': nonce,
-                'Content-Type': 'application/json',
-            };
         }
         return { 'url': url, 'method': method, 'body': body, 'headers': headers };
     }
@@ -1213,4 +1221,3 @@ module.exports = class coinbase extends Exchange {
         }
     }
 };
-

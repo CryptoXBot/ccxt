@@ -1,5 +1,7 @@
 'use strict';
 
+const { PAD_WITH_ZERO } = require('../../js/base/functions/number.js');
+
 //-----------------------------------------------------------------------------
 
 const ccxt         = require ('../../ccxt.js')
@@ -62,6 +64,7 @@ const enableRateLimit = true
 const coins = [
     'BTC',
     'ETH',
+    'BNB',
     'EUR',
     'LTC',
     'USD',
@@ -90,6 +93,7 @@ function initializeAllExchanges () {
         'bitstamp1',
         'bitfinex2',
         'upbit',
+        'huobipro',
     ]
     const result = []
     ccxt.exchanges.filter (exchangeId => (!ignore.includes (exchangeId))).forEach (exchangeId => {
@@ -198,7 +202,7 @@ function initializeAllExchanges () {
         })
         return extend ({
             'exchange': result.exchange,
-            '$': decimalToPrecision (value, ROUND, 8, DECIMAL_PLACES),
+            '$': decimalToPrecision (value, ROUND, 2, DECIMAL_PLACES, PAD_WITH_ZERO),
         }, result);
     })
 
@@ -207,5 +211,7 @@ function initializeAllExchanges () {
     log (table)
 
     log.green ('Currencies:', currencies)
+
+    console.log (new Date ())
 
 }) ()

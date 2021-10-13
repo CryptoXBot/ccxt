@@ -11,6 +11,7 @@ from ccxt.base.errors import BadSymbol
 from ccxt.base.errors import InsufficientFunds
 from ccxt.base.errors import InvalidAddress
 from ccxt.base.errors import InvalidOrder
+from ccxt.base.precise import Precise
 
 
 class xena(Exchange):
@@ -21,11 +22,10 @@ class xena(Exchange):
             'name': 'Xena Exchange',
             'countries': ['VC', 'UK'],
             'rateLimit': 100,
-            'certified': True,
             'has': {
-                'CORS': False,
                 'cancelAllOrders': True,
                 'cancelOrder': True,
+                'CORS': None,
                 'createDepositAddress': True,
                 'createOrder': True,
                 'editOrder': True,
@@ -51,7 +51,7 @@ class xena(Exchange):
                 'logo': 'https://user-images.githubusercontent.com/51840849/87489843-bb469280-c64c-11ea-91aa-69c6326506af.jpg',
                 'test': {
                     'public': 'https://trading.demo.xena.io/api',
-                    'private': 'https://api.demo.xena.io/trading',
+                    'private': 'https://api.demo.xena.io',
                 },
                 'api': {
                     'public': 'https://trading.xena.exchange/api',
@@ -284,8 +284,8 @@ class xena(Exchange):
                 'price': pricePrecision,
                 'amount': 0,
             }
-            maxCost = self.safe_float(market, 'maxOrderQty')
-            minCost = self.safe_float(market, 'minOrderQuantity')
+            maxCost = self.safe_number(market, 'maxOrderQty')
+            minCost = self.safe_number(market, 'minOrderQuantity')
             limits = {
                 'amount': {
                     'min': None,
@@ -368,23 +368,15 @@ class xena(Exchange):
                 'info': currency,
                 'name': name,
                 'active': active,
-                'fee': self.safe_float(withdraw, 'commission'),
+                'fee': self.safe_number(withdraw, 'commission'),
                 'precision': precision,
                 'limits': {
                     'amount': {
                         'min': None,
                         'max': None,
                     },
-                    'price': {
-                        'min': None,
-                        'max': None,
-                    },
-                    'cost': {
-                        'min': None,
-                        'max': None,
-                    },
                     'withdraw': {
-                        'min': self.safe_float(withdraw, 'minAmount'),
+                        'min': self.safe_number(withdraw, 'minAmount'),
                         'max': None,
                     },
                 },
@@ -410,41 +402,33 @@ class xena(Exchange):
         timestamp = self.milliseconds()
         marketId = self.safe_string(ticker, 'symbol')
         symbol = self.safe_symbol(marketId, market)
-        last = self.safe_float(ticker, 'lastPx')
-        open = self.safe_float(ticker, 'firstPx')
-        percentage = None
-        change = None
-        average = None
-        if (last is not None) and (open is not None):
-            change = last - open
-            average = self.sum(last, open) / 2
-            if open > 0:
-                percentage = change / open * 100
-        buyVolume = self.safe_float(ticker, 'buyVolume')
-        sellVolume = self.safe_float(ticker, 'sellVolume')
+        last = self.safe_number(ticker, 'lastPx')
+        open = self.safe_number(ticker, 'firstPx')
+        buyVolume = self.safe_number(ticker, 'buyVolume')
+        sellVolume = self.safe_number(ticker, 'sellVolume')
         baseVolume = self.sum(buyVolume, sellVolume)
-        return {
+        return self.safe_ticker({
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'highPx'),
-            'low': self.safe_float(ticker, 'lowPx'),
-            'bid': self.safe_float(ticker, 'bid'),
+            'high': self.safe_number(ticker, 'highPx'),
+            'low': self.safe_number(ticker, 'lowPx'),
+            'bid': self.safe_number(ticker, 'bid'),
             'bidVolume': None,
-            'ask': self.safe_float(ticker, 'ask'),
+            'ask': self.safe_number(ticker, 'ask'),
             'askVolume': None,
             'vwap': None,
             'open': open,
             'close': last,
             'last': last,
             'previousClose': None,
-            'change': change,
-            'percentage': percentage,
-            'average': average,
+            'change': None,
+            'percentage': None,
+            'average': None,
             'baseVolume': baseVolume,
             'quoteVolume': None,
             'info': ticker,
-        }
+        }, market)
 
     def fetch_ticker(self, symbol, params={}):
         self.load_markets()
@@ -514,7 +498,7 @@ class xena(Exchange):
         mdEntriesByType = self.group_by(mdEntry, 'mdEntryType')
         lastUpdateTime = self.safe_integer(response, 'lastUpdateTime')
         timestamp = int(lastUpdateTime / 1000000)
-        return self.parse_order_book(mdEntriesByType, timestamp, '0', '1', 'mdEntryPx', 'mdEntrySize')
+        return self.parse_order_book(mdEntriesByType, symbol, timestamp, '0', '1', 'mdEntryPx', 'mdEntrySize')
 
     def fetch_accounts(self, params={}):
         response = self.privateGetTradingAccounts(params)
@@ -579,23 +563,36 @@ class xena(Exchange):
         response = self.privateGetTradingAccountsAccountIdBalance(self.extend(request, params))
         #
         #     {
-        #         "balances": [
-        #             {"available":"0","onHold":"0","settled":"0","equity":"0","currency":"BAB","lastUpdated":1564811790485125345},
-        #             {"available":"0","onHold":"0","settled":"0","equity":"0","currency":"BSV","lastUpdated":1564811790485125345},
-        #             {"available":"0","onHold":"0","settled":"0","equity":"0","currency":"BTC","lastUpdated":1564811790485125345},
+        #         "msgType":"XAR",
+        #         "balances":[
+        #             {
+        #                 "currency":"BTC",
+        #                 "lastUpdateTime":1619384111905916598,
+        #                 "available":"0.00549964",
+        #                 "onHold":"0",
+        #                 "settled":"0.00549964",
+        #                 "equity":"0.00549964"
+        #             }
         #         ]
         #     }
         #
         result = {'info': response}
+        timestamp = None
         balances = self.safe_value(response, 'balances', [])
         for i in range(0, len(balances)):
             balance = balances[i]
+            lastUpdateTime = self.safe_string(balance, 'lastUpdateTime')
+            lastUpdated = lastUpdateTime[0:13]
+            currentTimestamp = int(lastUpdated)
+            timestamp = currentTimestamp if (timestamp is None) else max(timestamp, currentTimestamp)
             currencyId = self.safe_string(balance, 'currency')
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['free'] = self.safe_float(balance, 'available')
-            account['used'] = self.safe_float(balance, 'onHold')
+            account['free'] = self.safe_string(balance, 'available')
+            account['used'] = self.safe_string(balance, 'onHold')
             result[code] = account
+        result['timestamp'] = timestamp
+        result['datetime'] = self.iso8601(timestamp)
         return self.parse_balance(result)
 
     def parse_trade(self, trade, market=None):
@@ -647,18 +644,17 @@ class xena(Exchange):
         orderId = self.safe_string(trade, 'orderId')
         marketId = self.safe_string(trade, 'symbol')
         symbol = self.safe_symbol(marketId, market)
-        price = self.safe_float_2(trade, 'lastPx', 'mdEntryPx')
-        amount = self.safe_float_2(trade, 'lastQty', 'mdEntrySize')
-        cost = None
-        if price is not None:
-            if amount is not None:
-                cost = price * amount
+        priceString = self.safe_string_2(trade, 'lastPx', 'mdEntryPx')
+        amountString = self.safe_string_2(trade, 'lastQty', 'mdEntrySize')
+        price = self.parse_number(priceString)
+        amount = self.parse_number(amountString)
+        cost = self.parse_number(Precise.string_mul(priceString, amountString))
         fee = None
-        feeCost = self.safe_float(trade, 'commission')
+        feeCost = self.safe_number(trade, 'commission')
         if feeCost is not None:
             feeCurrencyId = self.safe_string(trade, 'commCurrency')
             feeCurrencyCode = self.safe_currency_code(feeCurrencyId)
-            feeRate = self.safe_float(trade, 'commRate')
+            feeRate = self.safe_number(trade, 'commRate')
             fee = {
                 'cost': feeCost,
                 'rate': feeRate,
@@ -767,15 +763,15 @@ class xena(Exchange):
         #
         transactTime = self.safe_integer(ohlcv, 'transactTime')
         timestamp = int(transactTime / 1000000)
-        buyVolume = self.safe_float(ohlcv, 'buyVolume')
-        sellVolume = self.safe_float(ohlcv, 'sellVolume')
+        buyVolume = self.safe_number(ohlcv, 'buyVolume')
+        sellVolume = self.safe_number(ohlcv, 'sellVolume')
         volume = self.sum(buyVolume, sellVolume)
         return [
             timestamp,
-            self.safe_float(ohlcv, 'firstPx'),
-            self.safe_float(ohlcv, 'highPx'),
-            self.safe_float(ohlcv, 'lowPx'),
-            self.safe_float(ohlcv, 'lastPx'),
+            self.safe_number(ohlcv, 'firstPx'),
+            self.safe_number(ohlcv, 'highPx'),
+            self.safe_number(ohlcv, 'lowPx'),
+            self.safe_number(ohlcv, 'lastPx'),
             volume,
         ]
 
@@ -891,11 +887,10 @@ class xena(Exchange):
         status = self.parse_order_status(self.safe_string(order, 'ordStatus'))
         marketId = self.safe_string(order, 'symbol')
         symbol = self.safe_symbol(marketId, market)
-        price = self.safe_float(order, 'price')
-        amount = self.safe_float(order, 'orderQty')
-        filled = self.safe_float(order, 'cumQty')
-        remaining = self.safe_float(order, 'leavesQty')
-        cost = None
+        price = self.safe_number(order, 'price')
+        amount = self.safe_number(order, 'orderQty')
+        filled = self.safe_number(order, 'cumQty')
+        remaining = self.safe_number(order, 'leavesQty')
         side = self.safe_string_lower(order, 'side')
         if side == '1':
             side = 'buy'
@@ -910,10 +905,7 @@ class xena(Exchange):
             type = 'stop'
         elif type == '4':
             type = 'stop-limit'
-        if cost is None:
-            if (price is not None) and (filled is not None):
-                cost = price * filled
-        return {
+        return self.safe_order({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,
@@ -928,14 +920,14 @@ class xena(Exchange):
             'price': price,
             'stopPrice': None,
             'amount': amount,
-            'cost': cost,
+            'cost': None,
             'average': None,
             'filled': filled,
             'remaining': remaining,
             'status': status,
             'fee': None,
             'trades': None,
-        }
+        })
 
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         self.load_markets()
@@ -983,7 +975,7 @@ class xena(Exchange):
                 raise InvalidOrder(self.id + ' createOrder() requires a price argument for order type ' + type)
             request['price'] = self.price_to_precision(symbol, price)
         if (type == 'stop') or (type == 'stop-limit'):
-            stopPx = self.safe_float(params, 'stopPx')
+            stopPx = self.safe_number(params, 'stopPx')
             if stopPx is None:
                 raise InvalidOrder(self.id + ' createOrder() requires a stopPx param for order type ' + type)
             request['stopPx'] = self.price_to_precision(symbol, stopPx)
@@ -1054,11 +1046,11 @@ class xena(Exchange):
             request['orderQty'] = self.amount_to_precision(symbol, amount)
         if price is not None:
             request['price'] = self.price_to_precision(symbol, price)
-        stopPx = self.safe_float(params, 'stopPx')
+        stopPx = self.safe_number(params, 'stopPx')
         if stopPx is not None:
             request['stopPx'] = self.price_to_precision(symbol, stopPx)
             params = self.omit(params, 'stopPx')
-        capPrice = self.safe_float(params, 'capPrice')
+        capPrice = self.safe_number(params, 'capPrice')
         if capPrice is not None:
             request['capPrice'] = self.price_to_precision(symbol, capPrice)
             params = self.omit(params, 'capPrice')
@@ -1392,7 +1384,7 @@ class xena(Exchange):
         address = self.safe_string(transaction, 'address')
         addressFrom = None
         addressTo = address
-        amount = self.safe_float(transaction, 'amount')
+        amount = self.safe_number(transaction, 'amount')
         status = self.parse_transaction_status(self.safe_string(transaction, 'status'))
         fee = None
         return {
@@ -1430,6 +1422,7 @@ class xena(Exchange):
         return self.safe_string(statuses, status, status)
 
     def withdraw(self, code, amount, address, tag=None, params={}):
+        tag, params = self.handle_withdraw_tag_and_params(tag, params)
         self.check_address(address)
         self.load_markets()
         self.load_accounts()
@@ -1485,7 +1478,7 @@ class xena(Exchange):
         referenceAccount = None
         type = self.parse_ledger_entry_type(self.safe_string(item, 'kind'))
         code = self.safe_currency_code(self.safe_string(item, 'currency'), currency)
-        amount = self.safe_float(item, 'amount')
+        amount = self.safe_number(item, 'amount')
         if amount < 0:
             direction = 'out'
             amount = abs(amount)
@@ -1495,11 +1488,11 @@ class xena(Exchange):
         if timestamp is not None:
             timestamp = int(timestamp / 1000000)
         fee = {
-            'cost': self.safe_float(item, 'commission'),
+            'cost': self.safe_number(item, 'commission'),
             'currency': code,
         }
         before = None
-        after = self.safe_float(item, 'balance')
+        after = self.safe_number(item, 'balance')
         status = 'ok'
         return {
             'info': item,

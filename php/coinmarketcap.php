@@ -18,22 +18,22 @@ class coinmarketcap extends Exchange {
             'version' => 'v1',
             'countries' => array( 'US' ),
             'has' => array(
-                'cancelOrder' => false,
+                'cancelOrder' => null,
                 'CORS' => true,
-                'createLimitOrder' => false,
-                'createMarketOrder' => false,
-                'createOrder' => false,
-                'editOrder' => false,
-                'privateAPI' => false,
-                'fetchBalance' => false,
+                'createLimitOrder' => null,
+                'createMarketOrder' => null,
+                'createOrder' => null,
+                'editOrder' => null,
+                'fetchBalance' => null,
                 'fetchCurrencies' => true,
-                'fetchL2OrderBook' => false,
+                'fetchL2OrderBook' => null,
                 'fetchMarkets' => true,
-                'fetchOHLCV' => false,
-                'fetchOrderBook' => false,
+                'fetchOHLCV' => null,
+                'fetchOrderBook' => null,
                 'fetchTicker' => true,
                 'fetchTickers' => true,
-                'fetchTrades' => false,
+                'fetchTrades' => null,
+                'privateAPI' => null,
             ),
             'urls' => array(
                 'logo' => 'https://user-images.githubusercontent.com/51840849/87182086-1cd4cd00-c2ec-11ea-9ec4-d0cf2a2abf62.jpg',
@@ -210,16 +210,16 @@ class coinmarketcap extends Exchange {
         if ($timestamp === null) {
             $timestamp = $this->milliseconds();
         }
-        $change = $this->safe_float($ticker, 'percent_change_24h');
+        $change = $this->safe_number($ticker, 'percent_change_24h');
         $last = null;
         $symbol = null;
         $volume = null;
         if ($market !== null) {
             $symbol = $market['symbol'];
             $priceKey = 'price_' . $market['quoteId'];
-            $last = $this->safe_float($ticker, $priceKey);
+            $last = $this->safe_number($ticker, $priceKey);
             $volumeKey = '24h_volume_' . $market['quoteId'];
-            $volume = $this->safe_float($ticker, $volumeKey);
+            $volume = $this->safe_number($ticker, $volumeKey);
         }
         return array(
             'symbol' => $symbol,
@@ -295,7 +295,6 @@ class coinmarketcap extends Exchange {
             // todo => will need to rethink the fees
             // to add support for multiple withdrawal/deposit methods and
             // differentiated fees for each particular method
-            $precision = 8; // default $precision, todo => fix "magic constants"
             $code = $this->currency_code($id, $name);
             $result[$code] = array(
                 'id' => $id,
@@ -303,16 +302,16 @@ class coinmarketcap extends Exchange {
                 'info' => $currency,
                 'name' => $name,
                 'active' => true,
-                'fee' => null, // todo => redesign
-                'precision' => $precision,
+                'fee' => null,
+                'precision' => null,
                 'limits' => array(
                     'amount' => array(
-                        'min' => pow(10, -$precision),
-                        'max' => pow(10, $precision),
+                        'min' => null,
+                        'max' => null,
                     ),
                     'price' => array(
-                        'min' => pow(10, -$precision),
-                        'max' => pow(10, $precision),
+                        'min' => null,
+                        'max' => null,
                     ),
                     'cost' => array(
                         'min' => null,
@@ -337,13 +336,13 @@ class coinmarketcap extends Exchange {
         return array( 'url' => $url, 'method' => $method, 'body' => $body, 'headers' => $headers );
     }
 
-    public function request($path, $api = 'public', $method = 'GET', $params = array (), $headers = null, $body = null) {
-        $response = $this->fetch2($path, $api, $method, $params, $headers, $body);
-        if (is_array($response) && array_key_exists('error', $response)) {
-            if ($response['error']) {
-                throw new ExchangeError($this->id . ' ' . $this->json($response));
-            }
+    public function handle_errors($httpCode, $reason, $url, $method, $headers, $body, $response, $requestHeaders, $requestBody) {
+        if ($response === null) {
+            return;
         }
-        return $response;
+        $error = $this->safe_value($response, 'error', false);
+        if ($error) {
+            throw new ExchangeError($this->id . ' ' . $this->json($response));
+        }
     }
 }

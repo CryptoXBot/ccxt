@@ -5,6 +5,7 @@
 const Exchange = require ('./base/Exchange');
 const { BadSymbol, ExchangeError, ExchangeNotAvailable, AuthenticationError, InvalidOrder, InsufficientFunds, OrderNotFound, DDoSProtection, PermissionDenied, AddressPending, OnMaintenance, BadRequest, InvalidAddress } = require ('./base/errors');
 const { TRUNCATE, DECIMAL_PLACES } = require ('./base/functions/number');
+const Precise = require ('./base/Precise');
 
 //  ---------------------------------------------------------------------------
 
@@ -16,33 +17,33 @@ module.exports = class bittrex extends Exchange {
             'countries': [ 'US' ],
             'version': 'v3',
             'rateLimit': 1500,
-            'certified': true,
+            'certified': false,
             'pro': true,
             // new metainfo interface
             'has': {
-                'CORS': false,
                 'cancelAllOrders': true,
                 'cancelOrder': true,
+                'CORS': undefined,
                 'createDepositAddress': true,
                 'createMarketOrder': true,
                 'createOrder': true,
                 'fetchBalance': true,
-                'fetchDeposits': true,
-                'fetchDepositAddress': true,
                 'fetchClosedOrders': true,
                 'fetchCurrencies': true,
+                'fetchDepositAddress': true,
+                'fetchDeposits': true,
                 'fetchMarkets': true,
                 'fetchMyTrades': 'emulated',
                 'fetchOHLCV': true,
-                'fetchOrder': true,
-                'fetchOrderTrades': true,
-                'fetchOrderBook': true,
                 'fetchOpenOrders': true,
+                'fetchOrder': true,
+                'fetchOrderBook': true,
+                'fetchOrderTrades': true,
                 'fetchTicker': true,
                 'fetchTickers': true,
                 'fetchTime': true,
                 'fetchTrades': true,
-                'fetchTransactions': false,
+                'fetchTransactions': undefined,
                 'fetchWithdrawals': true,
                 'withdraw': true,
             },
@@ -140,8 +141,8 @@ module.exports = class bittrex extends Exchange {
                 'trading': {
                     'tierBased': true,
                     'percentage': true,
-                    'maker': 0.0035,
-                    'taker': 0.0035,
+                    'maker': this.parseNumber ('0.0075'),
+                    'taker': this.parseNumber ('0.0075'),
                 },
                 'funding': {
                     'tierBased': false,
@@ -155,6 +156,7 @@ module.exports = class bittrex extends Exchange {
                     // 'Call to Cancel was throttled. Try again in 60 seconds.': DDoSProtection,
                     // 'Call to GetBalances was throttled. Try again in 60 seconds.': DDoSProtection,
                     'APISIGN_NOT_PROVIDED': AuthenticationError,
+                    'APIKEY_INVALID': AuthenticationError,
                     'INVALID_SIGNATURE': AuthenticationError,
                     'INVALID_CURRENCY': ExchangeError,
                     'INVALID_PERMISSION': AuthenticationError,
@@ -164,6 +166,7 @@ module.exports = class bittrex extends Exchange {
                     'INVALID_ORDER_TYPE': InvalidOrder,
                     'QUANTITY_NOT_PROVIDED': InvalidOrder,
                     'MIN_TRADE_REQUIREMENT_NOT_MET': InvalidOrder,
+                    'NOT_FOUND': OrderNotFound,
                     'ORDER_NOT_OPEN': OrderNotFound,
                     'INVALID_ORDER': InvalidOrder,
                     'UUID_INVALID': OrderNotFound,
@@ -214,7 +217,9 @@ module.exports = class bittrex extends Exchange {
                 // 'createOrderMethod': 'create_order_v1',
             },
             'commonCurrencies': {
+                'MER': 'Mercury', // conflict with Mercurial Finance
                 'REPV2': 'REP',
+                'TON': 'Tokamak Network',
             },
         });
     }
@@ -280,7 +285,7 @@ module.exports = class bittrex extends Exchange {
                 'precision': precision,
                 'limits': {
                     'amount': {
-                        'min': this.safeFloat (market, 'minTradeSize'),
+                        'min': this.safeNumber (market, 'minTradeSize'),
                         'max': undefined,
                     },
                     'price': {
@@ -308,8 +313,8 @@ module.exports = class bittrex extends Exchange {
             const code = this.safeCurrencyCode (currencyId);
             const account = this.account ();
             const balance = indexed[currencyId];
-            account['free'] = this.safeFloat (balance, 'available');
-            account['total'] = this.safeFloat (balance, 'total');
+            account['free'] = this.safeString (balance, 'available');
+            account['total'] = this.safeString (balance, 'total');
             result[code] = account;
         }
         return this.parseBalance (result);
@@ -342,7 +347,7 @@ module.exports = class bittrex extends Exchange {
         //     }
         //
         const sequence = this.safeInteger (this.last_response_headers, 'Sequence');
-        const orderbook = this.parseOrderBook (response, undefined, 'bid', 'ask', 'rate', 'quantity');
+        const orderbook = this.parseOrderBook (response, symbol, undefined, 'bid', 'ask', 'rate', 'quantity');
         orderbook['nonce'] = sequence;
         return orderbook;
     }
@@ -372,7 +377,7 @@ module.exports = class bittrex extends Exchange {
             const id = this.safeString (currency, 'symbol');
             const code = this.safeCurrencyCode (id);
             const precision = 8; // default precision, todo: fix "magic constants"
-            const fee = this.safeFloat (currency, 'txFee'); // todo: redesign
+            const fee = this.safeNumber (currency, 'txFee'); // todo: redesign
             const isActive = this.safeString (currency, 'status');
             result[code] = {
                 'id': id,
@@ -387,14 +392,6 @@ module.exports = class bittrex extends Exchange {
                 'limits': {
                     'amount': {
                         'min': 1 / Math.pow (10, precision),
-                        'max': undefined,
-                    },
-                    'price': {
-                        'min': 1 / Math.pow (10, precision),
-                        'max': undefined,
-                    },
-                    'cost': {
-                        'min': undefined,
                         'max': undefined,
                     },
                     'withdraw': {
@@ -433,17 +430,17 @@ module.exports = class bittrex extends Exchange {
         const timestamp = this.parse8601 (this.safeString (ticker, 'updatedAt'));
         const marketId = this.safeString (ticker, 'symbol');
         const symbol = this.safeSymbol (marketId, market, '-');
-        const percentage = this.safeFloat (ticker, 'percentChange');
-        const last = this.safeFloat (ticker, 'lastTradeRate');
+        const percentage = this.safeNumber (ticker, 'percentChange');
+        const last = this.safeNumber (ticker, 'lastTradeRate');
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'high': this.safeFloat (ticker, 'high'),
-            'low': this.safeFloat (ticker, 'low'),
-            'bid': this.safeFloat (ticker, 'bidRate'),
+            'high': this.safeNumber (ticker, 'high'),
+            'low': this.safeNumber (ticker, 'low'),
+            'bid': this.safeNumber (ticker, 'bidRate'),
             'bidVolume': undefined,
-            'ask': this.safeFloat (ticker, 'askRate'),
+            'ask': this.safeNumber (ticker, 'askRate'),
             'askVolume': undefined,
             'vwap': undefined,
             'open': undefined,
@@ -453,8 +450,8 @@ module.exports = class bittrex extends Exchange {
             'change': undefined,
             'percentage': percentage,
             'average': undefined,
-            'baseVolume': this.safeFloat (ticker, 'volume'),
-            'quoteVolume': this.safeFloat (ticker, 'quoteVolume'),
+            'baseVolume': this.safeNumber (ticker, 'volume'),
+            'quoteVolume': this.safeNumber (ticker, 'quoteVolume'),
             'info': ticker,
         };
     }
@@ -567,21 +564,18 @@ module.exports = class bittrex extends Exchange {
         const order = this.safeString (trade, 'orderId');
         const marketId = this.safeString (trade, 'marketSymbol');
         market = this.safeMarket (marketId, market, '-');
-        let cost = undefined;
-        const price = this.safeFloat (trade, 'rate');
-        const amount = this.safeFloat (trade, 'quantity');
-        if (amount !== undefined) {
-            if (price !== undefined) {
-                cost = price * amount;
-            }
-        }
+        const priceString = this.safeString (trade, 'rate');
+        const amountString = this.safeString (trade, 'quantity');
+        const price = this.parseNumber (priceString);
+        const amount = this.parseNumber (amountString);
+        const cost = this.parseNumber (Precise.stringMul (priceString, amountString));
         let takerOrMaker = undefined;
         const isTaker = this.safeValue (trade, 'isTaker');
         if (isTaker !== undefined) {
             takerOrMaker = isTaker ? 'taker' : 'maker';
         }
         let fee = undefined;
-        const feeCost = this.safeFloat (trade, 'commission');
+        const feeCost = this.safeNumber (trade, 'commission');
         if (feeCost !== undefined) {
             fee = {
                 'cost': feeCost,
@@ -651,11 +645,11 @@ module.exports = class bittrex extends Exchange {
         //
         return [
             this.parse8601 (this.safeString (ohlcv, 'startsAt')),
-            this.safeFloat (ohlcv, 'open'),
-            this.safeFloat (ohlcv, 'high'),
-            this.safeFloat (ohlcv, 'low'),
-            this.safeFloat (ohlcv, 'close'),
-            this.safeFloat (ohlcv, 'volume'),
+            this.safeNumber (ohlcv, 'open'),
+            this.safeNumber (ohlcv, 'high'),
+            this.safeNumber (ohlcv, 'low'),
+            this.safeNumber (ohlcv, 'close'),
+            this.safeNumber (ohlcv, 'volume'),
         ];
     }
 
@@ -762,9 +756,9 @@ module.exports = class bittrex extends Exchange {
             let cost = undefined;
             if (isCeilingLimit) {
                 request['limit'] = this.priceToPrecision (symbol, price);
-                cost = this.safeFloat2 (params, 'ceiling', 'cost', amount);
+                cost = this.safeNumber2 (params, 'ceiling', 'cost', amount);
             } else if (isCeilingMarket) {
-                cost = this.safeFloat2 (params, 'ceiling', 'cost');
+                cost = this.safeNumber2 (params, 'ceiling', 'cost');
                 if (cost === undefined) {
                     if (price === undefined) {
                         cost = amount;
@@ -923,7 +917,7 @@ module.exports = class bittrex extends Exchange {
         //     }
         //
         const id = this.safeString (transaction, 'id');
-        const amount = this.safeFloat (transaction, 'quantity');
+        const amount = this.safeNumber (transaction, 'quantity');
         const address = this.safeString (transaction, 'cryptoAddress');
         const txid = this.safeString (transaction, 'txId');
         const updated = this.parse8601 (this.safeString (transaction, 'updatedAt'));
@@ -959,7 +953,7 @@ module.exports = class bittrex extends Exchange {
                 status = 'ok';
             }
         }
-        let feeCost = this.safeFloat (transaction, 'txCost');
+        let feeCost = this.safeNumber (transaction, 'txCost');
         if (feeCost === undefined) {
             if (type === 'deposit') {
                 // according to https://support.bittrex.com/hc/en-us/articles/115000199651-What-fees-does-Bittrex-charge-
@@ -1006,6 +1000,7 @@ module.exports = class bittrex extends Exchange {
         //         quantity: '0.50000000',
         //         limit: '0.17846699',
         //         timeInForce: 'GOOD_TIL_CANCELLED',
+        //         clientOrderId: 'ff156d39-fe01-44ca-8f21-b0afa19ef228',
         //         fillQuantity: '0.50000000',
         //         commission: '0.00022286',
         //         proceeds: '0.08914915',
@@ -1016,19 +1011,14 @@ module.exports = class bittrex extends Exchange {
         //     }
         //
         const marketSymbol = this.safeString (order, 'marketSymbol');
-        let symbol = undefined;
-        let feeCurrency = undefined;
-        if (marketSymbol !== undefined) {
-            const [ baseId, quoteId ] = marketSymbol.split ('-');
-            const base = this.safeCurrencyCode (baseId);
-            const quote = this.safeCurrencyCode (quoteId);
-            symbol = base + '/' + quote;
-            feeCurrency = quote;
-        }
+        market = this.safeMarket (marketSymbol, market, '-');
+        const symbol = market['symbol'];
+        const feeCurrency = market['quote'];
         const direction = this.safeStringLower (order, 'direction');
         const createdAt = this.safeString (order, 'createdAt');
         const updatedAt = this.safeString (order, 'updatedAt');
         const closedAt = this.safeString (order, 'closedAt');
+        const clientOrderId = this.safeString (order, 'clientOrderId');
         let lastTradeTimestamp = undefined;
         if (closedAt !== undefined) {
             lastTradeTimestamp = this.parse8601 (closedAt);
@@ -1037,34 +1027,17 @@ module.exports = class bittrex extends Exchange {
         }
         const timestamp = this.parse8601 (createdAt);
         const type = this.safeStringLower (order, 'type');
-        const quantity = this.safeFloat (order, 'quantity');
-        const limit = this.safeFloat (order, 'limit');
-        const fillQuantity = this.safeFloat (order, 'fillQuantity');
-        const commission = this.safeFloat (order, 'commission');
-        const proceeds = this.safeFloat (order, 'proceeds');
-        let average = undefined;
-        let remaining = undefined;
-        if (fillQuantity !== undefined) {
-            if (proceeds !== undefined) {
-                if (fillQuantity > 0) {
-                    average = proceeds / fillQuantity;
-                } else if (proceeds === 0) {
-                    average = 0;
-                }
-            }
-            if (quantity !== undefined) {
-                remaining = quantity - fillQuantity;
-            }
-        }
-        let status = this.safeStringLower (order, 'status');
-        if ((status === 'closed') && (remaining !== undefined) && (remaining > 0)) {
-            status = 'canceled';
-        }
+        const quantity = this.safeNumber (order, 'quantity');
+        const limit = this.safeNumber (order, 'limit');
+        const fillQuantity = this.safeNumber (order, 'fillQuantity');
+        const commission = this.safeNumber (order, 'commission');
+        const proceeds = this.safeNumber (order, 'proceeds');
+        const status = this.safeStringLower (order, 'status');
         const timeInForce = this.parseTimeInForce (this.safeString (order, 'timeInForce'));
         const postOnly = (timeInForce === 'PO');
-        return {
+        return this.safeOrder ({
             'id': this.safeString (order, 'id'),
-            'clientOrderId': undefined,
+            'clientOrderId': clientOrderId,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
             'lastTradeTimestamp': lastTradeTimestamp,
@@ -1076,10 +1049,10 @@ module.exports = class bittrex extends Exchange {
             'price': limit,
             'stopPrice': undefined,
             'cost': proceeds,
-            'average': average,
+            'average': undefined,
             'amount': quantity,
             'filled': fillQuantity,
-            'remaining': remaining,
+            'remaining': undefined,
             'status': status,
             'fee': {
                 'cost': commission,
@@ -1087,7 +1060,7 @@ module.exports = class bittrex extends Exchange {
             },
             'info': order,
             'trades': undefined,
-        };
+        });
     }
 
     parseOrders (orders, market = undefined, since = undefined, limit = undefined, params = {}) {
@@ -1136,9 +1109,9 @@ module.exports = class bittrex extends Exchange {
             'side': this.safeString (order, 'side'),
             'order': this.safeString (order, 'id'),
             'type': this.safeString (order, 'type'),
-            'price': this.safeFloat (order, 'average'),
-            'amount': this.safeFloat (order, 'filled'),
-            'cost': this.safeFloat (order, 'cost'),
+            'price': this.safeNumber (order, 'average'),
+            'amount': this.safeNumber (order, 'filled'),
+            'cost': this.safeNumber (order, 'cost'),
             'symbol': this.safeString (order, 'symbol'),
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
@@ -1278,6 +1251,7 @@ module.exports = class bittrex extends Exchange {
     }
 
     async withdraw (code, amount, address, tag = undefined, params = {}) {
+        [ tag, params ] = this.handleWithdrawTagAndParams (tag, params);
         this.checkAddress (address);
         await this.loadMarkets ();
         const currency = this.currency (code);
@@ -1360,12 +1334,12 @@ module.exports = class bittrex extends Exchange {
             let success = this.safeValue (response, 'success');
             if (success === undefined) {
                 const code = this.safeString (response, 'code');
+                if ((code === 'NOT_FOUND') && (url.indexOf ('addresses') >= 0)) {
+                    throw new InvalidAddress (feedback);
+                }
                 if (code !== undefined) {
                     this.throwExactlyMatchedException (this.exceptions['exact'], code, feedback);
                     this.throwBroadlyMatchedException (this.exceptions['broad'], code, feedback);
-                }
-                if ((code === 'NOT_FOUND') && (url.indexOf ('addresses') >= 0)) {
-                    throw new InvalidAddress (feedback);
                 }
                 // throw new ExchangeError (this.id + ' malformed response ' + this.json (response));
                 return;

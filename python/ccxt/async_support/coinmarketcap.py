@@ -4,7 +4,6 @@
 # https://github.com/ccxt/ccxt/blob/master/CONTRIBUTING.md#how-to-contribute-code
 
 from ccxt.async_support.base.exchange import Exchange
-import math
 from ccxt.base.errors import ExchangeError
 
 
@@ -18,22 +17,22 @@ class coinmarketcap(Exchange):
             'version': 'v1',
             'countries': ['US'],
             'has': {
-                'cancelOrder': False,
+                'cancelOrder': None,
                 'CORS': True,
-                'createLimitOrder': False,
-                'createMarketOrder': False,
-                'createOrder': False,
-                'editOrder': False,
-                'privateAPI': False,
-                'fetchBalance': False,
+                'createLimitOrder': None,
+                'createMarketOrder': None,
+                'createOrder': None,
+                'editOrder': None,
+                'fetchBalance': None,
                 'fetchCurrencies': True,
-                'fetchL2OrderBook': False,
+                'fetchL2OrderBook': None,
                 'fetchMarkets': True,
-                'fetchOHLCV': False,
-                'fetchOrderBook': False,
+                'fetchOHLCV': None,
+                'fetchOrderBook': None,
                 'fetchTicker': True,
                 'fetchTickers': True,
-                'fetchTrades': False,
+                'fetchTrades': None,
+                'privateAPI': None,
             },
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/51840849/87182086-1cd4cd00-c2ec-11ea-9ec4-d0cf2a2abf62.jpg',
@@ -201,16 +200,16 @@ class coinmarketcap(Exchange):
         timestamp = self.safe_timestamp(ticker, 'last_updated')
         if timestamp is None:
             timestamp = self.milliseconds()
-        change = self.safe_float(ticker, 'percent_change_24h')
+        change = self.safe_number(ticker, 'percent_change_24h')
         last = None
         symbol = None
         volume = None
         if market is not None:
             symbol = market['symbol']
             priceKey = 'price_' + market['quoteId']
-            last = self.safe_float(ticker, priceKey)
+            last = self.safe_number(ticker, priceKey)
             volumeKey = '24h_volume_' + market['quoteId']
-            volume = self.safe_float(ticker, volumeKey)
+            volume = self.safe_number(ticker, volumeKey)
         return {
             'symbol': symbol,
             'timestamp': timestamp,
@@ -279,7 +278,6 @@ class coinmarketcap(Exchange):
             # todo: will need to rethink the fees
             # to add support for multiple withdrawal/deposit methods and
             # differentiated fees for each particular method
-            precision = 8  # default precision, todo: fix "magic constants"
             code = self.currency_code(id, name)
             result[code] = {
                 'id': id,
@@ -287,16 +285,16 @@ class coinmarketcap(Exchange):
                 'info': currency,
                 'name': name,
                 'active': True,
-                'fee': None,  # todo: redesign
-                'precision': precision,
+                'fee': None,
+                'precision': None,
                 'limits': {
                     'amount': {
-                        'min': math.pow(10, -precision),
-                        'max': math.pow(10, precision),
+                        'min': None,
+                        'max': None,
                     },
                     'price': {
-                        'min': math.pow(10, -precision),
-                        'max': math.pow(10, precision),
+                        'min': None,
+                        'max': None,
                     },
                     'cost': {
                         'min': None,
@@ -317,9 +315,9 @@ class coinmarketcap(Exchange):
             url += '?' + self.urlencode(query)
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
-    async def request(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        response = await self.fetch2(path, api, method, params, headers, body)
-        if 'error' in response:
-            if response['error']:
-                raise ExchangeError(self.id + ' ' + self.json(response))
-        return response
+    def handle_errors(self, httpCode, reason, url, method, headers, body, response, requestHeaders, requestBody):
+        if response is None:
+            return
+        error = self.safe_value(response, 'error', False)
+        if error:
+            raise ExchangeError(self.id + ' ' + self.json(response))

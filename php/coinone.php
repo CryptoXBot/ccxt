@@ -21,11 +21,13 @@ class coinone extends Exchange {
             'version' => 'v2',
             'has' => array(
                 'cancelOrder' => true,
-                'CORS' => false,
-                'createMarketOrder' => false,
+                'CORS' => null,
+                'createMarketOrder' => null,
                 'createOrder' => true,
                 'fetchBalance' => true,
-                'fetchCurrencies' => false,
+                'fetchClosedOrders' => null, // the endpoint that should return closed orders actually returns trades, https://github.com/ccxt/ccxt/pull/7067
+                'fetchCurrencies' => null,
+                'fetchDepositAddresses' => true,
                 'fetchMarkets' => true,
                 'fetchMyTrades' => true,
                 'fetchOpenOrders' => true,
@@ -34,9 +36,6 @@ class coinone extends Exchange {
                 'fetchTicker' => true,
                 'fetchTickers' => true,
                 'fetchTrades' => true,
-                // https://github.com/ccxt/ccxt/pull/7067
-                // the endpoint that should return closed orders actually returns trades
-                'fetchClosedOrders' => false,
             ),
             'urls' => array(
                 'logo' => 'https://user-images.githubusercontent.com/1294454/38003300-adc12fba-323f-11e8-8525-725f53c4a659.jpg',
@@ -58,6 +57,7 @@ class coinone extends Exchange {
                 ),
                 'private' => array(
                     'post' => array(
+                        'account/deposit_address/',
                         'account/btc_deposit_address/',
                         'account/balance/',
                         'account/daily_balance/',
@@ -97,6 +97,9 @@ class coinone extends Exchange {
                 '108' => '\\ccxt\\BadSymbol', // array("errorCode":"108","errorMsg":"Unknown CryptoCurrency","result":"error")
                 '107' => '\\ccxt\\BadRequest', // array("errorCode":"107","errorMsg":"Parameter error","result":"error")
             ),
+            'commonCurrencies' => array(
+                'SOC' => 'Soda Coin',
+            ),
         ));
     }
 
@@ -118,6 +121,7 @@ class coinone extends Exchange {
             }
             $base = $this->safe_currency_code($baseId);
             $result[] = array(
+                'info' => $ticker,
                 'id' => $baseId,
                 'symbol' => $base . '/' . $quote,
                 'base' => $base,
@@ -145,8 +149,8 @@ class coinone extends Exchange {
             $balance = $balances[$currencyId];
             $code = $this->safe_currency_code($currencyId);
             $account = $this->account();
-            $account['free'] = $this->safe_float($balance, 'avail');
-            $account['total'] = $this->safe_float($balance, 'balance');
+            $account['free'] = $this->safe_string($balance, 'avail');
+            $account['total'] = $this->safe_string($balance, 'balance');
             $result[$code] = $account;
         }
         return $this->parse_balance($result);
@@ -161,7 +165,7 @@ class coinone extends Exchange {
         );
         $response = $this->publicGetOrderbook (array_merge($request, $params));
         $timestamp = $this->safe_timestamp($response, 'timestamp');
-        return $this->parse_order_book($response, $timestamp, 'bid', 'ask', 'price', 'qty');
+        return $this->parse_order_book($response, $symbol, $timestamp, 'bid', 'ask', 'price', 'qty');
     }
 
     public function fetch_tickers($symbols = null, $params = array ()) {
@@ -202,44 +206,32 @@ class coinone extends Exchange {
 
     public function parse_ticker($ticker, $market = null) {
         $timestamp = $this->safe_timestamp($ticker, 'timestamp');
-        $first = $this->safe_float($ticker, 'first');
-        $last = $this->safe_float($ticker, 'last');
-        $average = null;
-        if ($first !== null && $last !== null) {
-            $average = $this->sum($first, $last) / 2;
-        }
-        $previousClose = $this->safe_float($ticker, 'yesterday_last');
-        $change = null;
-        $percentage = null;
-        if ($last !== null && $previousClose !== null) {
-            $change = $last - $previousClose;
-            if ($previousClose !== 0) {
-                $percentage = $change / $previousClose * 100;
-            }
-        }
-        $symbol = ($market !== null) ? $market['symbol'] : null;
-        return array(
+        $open = $this->safe_number($ticker, 'first');
+        $last = $this->safe_number($ticker, 'last');
+        $previousClose = $this->safe_number($ticker, 'yesterday_last');
+        $symbol = $this->safe_symbol(null, $market);
+        return $this->safe_ticker(array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_float($ticker, 'high'),
-            'low' => $this->safe_float($ticker, 'low'),
+            'high' => $this->safe_number($ticker, 'high'),
+            'low' => $this->safe_number($ticker, 'low'),
             'bid' => null,
             'bidVolume' => null,
             'ask' => null,
             'askVolume' => null,
             'vwap' => null,
-            'open' => $first,
+            'open' => $open,
             'close' => $last,
             'last' => $last,
             'previousClose' => $previousClose,
-            'change' => $change,
-            'percentage' => $percentage,
-            'average' => $average,
-            'baseVolume' => $this->safe_float($ticker, 'volume'),
+            'change' => null,
+            'percentage' => null,
+            'average' => null,
+            'baseVolume' => $this->safe_number($ticker, 'volume'),
             'quoteVolume' => null,
             'info' => $ticker,
-        );
+        ), $market);
     }
 
     public function parse_trade($trade, $market = null) {
@@ -282,20 +274,17 @@ class coinone extends Exchange {
                 $side = 'buy';
             }
         }
-        $price = $this->safe_float($trade, 'price');
-        $amount = $this->safe_float($trade, 'qty');
-        $cost = null;
-        if ($price !== null) {
-            if ($amount !== null) {
-                $cost = $price * $amount;
-            }
-        }
+        $priceString = $this->safe_string($trade, 'price');
+        $amountString = $this->safe_string($trade, 'qty');
+        $price = $this->parse_number($priceString);
+        $amount = $this->parse_number($amountString);
+        $cost = $this->parse_number(Precise::string_mul($priceString, $amountString));
         $orderId = $this->safe_string($trade, 'orderId');
-        $feeCost = $this->safe_float($trade, 'fee');
+        $feeCost = $this->safe_number($trade, 'fee');
         $fee = null;
         if ($feeCost !== null) {
             $feeCost = abs($feeCost);
-            $feeRate = $this->safe_float($trade, 'feeRate');
+            $feeRate = $this->safe_number($trade, 'feeRate');
             $feeRate = abs($feeRate);
             $feeCurrencyCode = null;
             if ($market !== null) {
@@ -455,7 +444,7 @@ class coinone extends Exchange {
         //     }
         //
         $id = $this->safe_string($order, 'orderId');
-        $price = $this->safe_float($order, 'price');
+        $price = $this->safe_number($order, 'price');
         $timestamp = $this->safe_timestamp($order, 'timestamp');
         $side = $this->safe_string($order, 'type');
         if ($side === 'ask') {
@@ -463,9 +452,8 @@ class coinone extends Exchange {
         } else if ($side === 'bid') {
             $side = 'buy';
         }
-        $remaining = $this->safe_float($order, 'remainQty');
-        $filled = null;
-        $amount = $this->safe_float($order, 'qty');
+        $remaining = $this->safe_number($order, 'remainQty');
+        $amount = $this->safe_number($order, 'qty');
         $status = $this->safe_string($order, 'status');
         // https://github.com/ccxt/ccxt/pull/7067
         if ($status === 'live') {
@@ -475,14 +463,7 @@ class coinone extends Exchange {
                 }
             }
         }
-        if (($remaining !== null) && ($amount !== null)) {
-            $filled = max ($amount - $remaining);
-        }
         $status = $this->parse_order_status($status);
-        $cost = null;
-        if (($price !== null) && ($filled !== null)) {
-            $cost = $price * $filled;
-        }
         $symbol = null;
         $base = null;
         $quote = null;
@@ -502,16 +483,16 @@ class coinone extends Exchange {
             $quote = $market['quote'];
         }
         $fee = null;
-        $feeCost = $this->safe_float($order, 'fee');
+        $feeCost = $this->safe_number($order, 'fee');
         if ($feeCost !== null) {
             $feeCurrencyCode = ($side === 'sell') ? $quote : $base;
             $fee = array(
                 'cost' => $feeCost,
-                'rate' => $this->safe_float($order, 'feeRate'),
+                'rate' => $this->safe_number($order, 'feeRate'),
                 'currency' => $feeCurrencyCode,
             );
         }
-        return array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,
@@ -525,15 +506,15 @@ class coinone extends Exchange {
             'side' => $side,
             'price' => $price,
             'stopPrice' => null,
-            'cost' => $cost,
+            'cost' => null,
             'average' => null,
             'amount' => $amount,
-            'filled' => $filled,
-            'remaining' => $amount,
+            'filled' => null,
+            'remaining' => $remaining,
             'status' => $status,
             'fee' => $fee,
             'trades' => null,
-        );
+        ));
     }
 
     public function fetch_open_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
@@ -608,8 +589,8 @@ class coinone extends Exchange {
             // eslint-disable-next-line quotes
             throw new ArgumentsRequired($this->id . " cancelOrder() requires a $symbol argument. To cancel the order, pass a $symbol argument and array('price' => 12345, 'qty' => 1.2345, 'is_ask' => 0) in the $params argument of cancelOrder.");
         }
-        $price = $this->safe_float($params, 'price');
-        $qty = $this->safe_float($params, 'qty');
+        $price = $this->safe_number($params, 'price');
+        $qty = $this->safe_number($params, 'qty');
         $isAsk = $this->safe_integer($params, 'is_ask');
         if (($price === null) || ($qty === null) || ($isAsk === null)) {
             // eslint-disable-next-line quotes
@@ -631,6 +612,58 @@ class coinone extends Exchange {
         //     }
         //
         return $response;
+    }
+
+    public function fetch_deposit_addresses($codes = null, $params = array ()) {
+        $this->load_markets();
+        $response = $this->privatePostAccountDepositAddress ($params);
+        //
+        //     {
+        //         $result => 'success',
+        //         errorCode => '0',
+        //         $walletAddress => {
+        //             matic => null,
+        //             btc => "mnobqu4i6qMCJWDpf5UimRmr8JCvZ8FLcN",
+        //             xrp => null,
+        //             xrp_tag => '-1',
+        //             kava => null,
+        //             kava_memo => null,
+        //         }
+        //     }
+        //
+        $walletAddress = $this->safe_value($response, 'walletAddress', array());
+        $keys = is_array($walletAddress) ? array_keys($walletAddress) : array();
+        $result = array();
+        for ($i = 0; $i < count($keys); $i++) {
+            $key = $keys[$i];
+            $value = $walletAddress[$key];
+            if ((!$value) || ($value === '-1')) {
+                continue;
+            }
+            $parts = explode('_', $key);
+            $currencyId = $this->safe_value($parts, 0);
+            $secondPart = $this->safe_value($parts, 1);
+            $code = $this->safe_currency_code($currencyId);
+            $depositAddress = $this->safe_value($result, $code);
+            if ($depositAddress === null) {
+                $depositAddress = array(
+                    'currency' => $code,
+                    'address' => null,
+                    'tag' => null,
+                    'info' => $value,
+                );
+            }
+            $address = $this->safe_string($depositAddress, 'address', $value);
+            $this->check_address($address);
+            $depositAddress['address'] = $address;
+            $depositAddress['info'] = $address;
+            if (($secondPart === 'tag' || $secondPart === 'memo')) {
+                $depositAddress['tag'] = $value;
+                $depositAddress['info'] = array( $address, $value );
+            }
+            $result[$code] = $depositAddress;
+        }
+        return $result;
     }
 
     public function sign($path, $api = 'public', $method = 'GET', $params = array (), $headers = null, $body = null) {

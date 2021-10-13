@@ -10,6 +10,7 @@ use \ccxt\ExchangeError;
 use \ccxt\ArgumentsRequired;
 use \ccxt\BadResponse;
 use \ccxt\DDoSProtection;
+use \ccxt\Precise;
 
 class bytetrade extends Exchange {
 
@@ -20,11 +21,11 @@ class bytetrade extends Exchange {
             'countries' => ['HK'],
             'rateLimit' => 500,
             'requiresWeb3' => true,
-            'certified' => true,
+            'certified' => false,
             // new metainfo interface
             'has' => array(
                 'cancelOrder' => true,
-                'CORS' => false,
+                'CORS' => null,
                 'createOrder' => true,
                 'fetchBalance' => true,
                 'fetchBidsAsks' => true,
@@ -43,7 +44,7 @@ class bytetrade extends Exchange {
                 'fetchTickers' => true,
                 'fetchTrades' => true,
                 'fetchWithdrawals' => true,
-                'withdraw' => true,
+                'withdraw' => null,
             ),
             'timeframes' => array(
                 '1m' => '1m',
@@ -120,6 +121,9 @@ class bytetrade extends Exchange {
                 'transaction already in network' => '\\ccxt\\BadRequest', // same transaction submited
                 'invalid argument' => '\\ccxt\\BadRequest',
             ),
+            'options' => array(
+                'orderExpiration' => 31536000000, // one year
+            ),
         ));
     }
 
@@ -190,12 +194,12 @@ class bytetrade extends Exchange {
             $limits = $this->safe_value($currency, 'limits');
             $deposit = $this->safe_value($limits, 'deposit');
             $amountPrecision = $this->safe_integer($currency, 'basePrecision');
-            $maxDeposit = $this->safe_float($deposit, 'max');
+            $maxDeposit = $this->safe_number($deposit, 'max');
             if ($maxDeposit === -1.0) {
                 $maxDeposit = null;
             }
             $withdraw = $this->safe_value($limits, 'withdraw');
-            $maxWithdraw = $this->safe_float($withdraw, 'max');
+            $maxWithdraw = $this->safe_number($withdraw, 'max');
             if ($maxWithdraw === -1.0) {
                 $maxWithdraw = null;
             }
@@ -208,14 +212,12 @@ class bytetrade extends Exchange {
                 'fee' => null,
                 'limits' => array(
                     'amount' => array( 'min' => null, 'max' => null ),
-                    'price' => array( 'min' => null, 'max' => null ),
-                    'cost' => array( 'min' => null, 'max' => null ),
                     'deposit' => array(
-                        'min' => $this->safe_float($deposit, 'min'),
+                        'min' => $this->safe_number($deposit, 'min'),
                         'max' => $maxDeposit,
                     ),
                     'withdraw' => array(
-                        'min' => $this->safe_float($withdraw, 'min'),
+                        'min' => $this->safe_number($withdraw, 'min'),
                         'max' => $maxWithdraw,
                     ),
                 ),
@@ -269,12 +271,12 @@ class bytetrade extends Exchange {
                 'normalSymbol' => $normalSymbol,
                 'limits' => array(
                     'amount' => array(
-                        'min' => $this->safe_float($amount, 'min'),
-                        'max' => $this->safe_float($amount, 'max'),
+                        'min' => $this->safe_number($amount, 'min'),
+                        'max' => $this->safe_number($amount, 'max'),
                     ),
                     'price' => array(
-                        'min' => $this->safe_float($price, 'min'),
-                        'max' => $this->safe_float($price, 'max'),
+                        'min' => $this->safe_number($price, 'min'),
+                        'max' => $this->safe_number($price, 'max'),
                     ),
                     'cost' => array(
                         'min' => null,
@@ -302,11 +304,11 @@ class bytetrade extends Exchange {
             $currencyId = $this->safe_string($balance, 'code');
             $code = $this->safe_currency_code($currencyId, null);
             $account = $this->account();
-            $account['free'] = $this->safe_float($balance, 'free');
-            $account['used'] = $this->safe_float($balance, 'used');
+            $account['free'] = $this->safe_string($balance, 'free');
+            $account['used'] = $this->safe_string($balance, 'used');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->parse_balance($result, false);
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
@@ -320,7 +322,7 @@ class bytetrade extends Exchange {
         }
         $response = yield $this->marketGetDepth (array_merge($request, $params));
         $timestamp = $this->safe_value($response, 'timestamp');
-        $orderbook = $this->parse_order_book($response, $timestamp);
+        $orderbook = $this->parse_order_book($response, $symbol, $timestamp);
         return $orderbook;
     }
 
@@ -367,22 +369,22 @@ class bytetrade extends Exchange {
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_float($ticker, 'high'),
-            'low' => $this->safe_float($ticker, 'low'),
+            'high' => $this->safe_number($ticker, 'high'),
+            'low' => $this->safe_number($ticker, 'low'),
             'bid' => null,
             'bidVolume' => null,
             'ask' => null,
             'askVolume' => null,
-            'vwap' => $this->safe_float($ticker, 'weightedAvgPrice'),
-            'open' => $this->safe_float($ticker, 'open'),
-            'close' => $this->safe_float($ticker, 'close'),
-            'last' => $this->safe_float($ticker, 'last'),
+            'vwap' => $this->safe_number($ticker, 'weightedAvgPrice'),
+            'open' => $this->safe_number($ticker, 'open'),
+            'close' => $this->safe_number($ticker, 'close'),
+            'last' => $this->safe_number($ticker, 'last'),
             'previousClose' => null, // previous day close
-            'change' => $this->safe_float($ticker, 'change'),
-            'percentage' => $this->safe_float($ticker, 'percentage'),
+            'change' => $this->safe_number($ticker, 'change'),
+            'percentage' => $this->safe_number($ticker, 'percentage'),
             'average' => null,
-            'baseVolume' => $this->safe_float($ticker, 'baseVolume'),
-            'quoteVolume' => $this->safe_float($ticker, 'quoteVolume'),
+            'baseVolume' => $this->safe_number($ticker, 'baseVolume'),
+            'quoteVolume' => $this->safe_number($ticker, 'quoteVolume'),
             'info' => $ticker,
         );
     }
@@ -425,24 +427,16 @@ class bytetrade extends Exchange {
         return $this->parse_ticker($response, $market);
     }
 
-    public function parse_tickers($rawTickers, $symbols = null) {
-        $tickers = array();
-        for ($i = 0; $i < count($rawTickers); $i++) {
-            $tickers[] = $this->parse_ticker($rawTickers[$i]);
-        }
-        return $this->filter_by_array($tickers, 'symbol', $symbols);
-    }
-
     public function fetch_bids_asks($symbols = null, $params = array ()) {
         yield $this->load_markets();
-        $rawTickers = yield $this->marketGetDepth ($params);
-        return $this->parse_tickers($rawTickers, $symbols);
+        $response = yield $this->marketGetDepth ($params);
+        return $this->parse_tickers($response, $symbols);
     }
 
     public function fetch_tickers($symbols = null, $params = array ()) {
         yield $this->load_markets();
-        $rawTickers = yield $this->marketGetTickers ($params);
-        return $this->parse_tickers($rawTickers, $symbols);
+        $response = yield $this->marketGetTickers ($params);
+        return $this->parse_tickers($response, $symbols);
     }
 
     public function parse_ohlcv($ohlcv, $market = null) {
@@ -458,11 +452,11 @@ class bytetrade extends Exchange {
         //
         return array(
             $this->safe_integer($ohlcv, 0),
-            $this->safe_float($ohlcv, 1),
-            $this->safe_float($ohlcv, 2),
-            $this->safe_float($ohlcv, 3),
-            $this->safe_float($ohlcv, 4),
-            $this->safe_float($ohlcv, 5),
+            $this->safe_number($ohlcv, 1),
+            $this->safe_number($ohlcv, 2),
+            $this->safe_number($ohlcv, 3),
+            $this->safe_number($ohlcv, 4),
+            $this->safe_number($ohlcv, 5),
         );
     }
 
@@ -492,16 +486,15 @@ class bytetrade extends Exchange {
 
     public function parse_trade($trade, $market = null) {
         $timestamp = $this->safe_integer($trade, 'timestamp');
-        $price = $this->safe_float($trade, 'price');
-        $amount = $this->safe_float($trade, 'amount');
-        $cost = $this->safe_float($trade, 'cost');
+        $price = $this->safe_number($trade, 'price');
+        $amount = $this->safe_number($trade, 'amount');
+        $cost = $this->safe_number($trade, 'cost');
         $id = $this->safe_string($trade, 'id');
         $type = $this->safe_string($trade, 'type');
         $takerOrMaker = $this->safe_string($trade, 'takerOrMaker');
         $side = $this->safe_string($trade, 'side');
         $datetime = $this->iso8601($timestamp); // $this->safe_string($trade, 'datetime');
         $order = $this->safe_string($trade, 'order');
-        $fee = $this->safe_value($trade, 'fee');
         $symbol = null;
         if ($market === null) {
             $marketId = $this->safe_string($trade, 'symbol');
@@ -510,6 +503,16 @@ class bytetrade extends Exchange {
         if ($market !== null) {
             $symbol = $market['symbol'];
         }
+        $feeData = $this->safe_value($trade, 'fee');
+        $feeCost = $this->safe_number($feeData, 'cost');
+        $feeRate = $this->safe_number($feeData, 'rate');
+        $feeCode = $this->safe_string($feeData, 'code');
+        $feeCurrency = $this->safe_currency_code($feeCode);
+        $fee = array(
+            'currency' => $feeCurrency,
+            'cost' => $feeCost,
+            'rate' => $feeRate,
+        );
         return array(
             'info' => $trade,
             'timestamp' => $timestamp,
@@ -564,16 +567,25 @@ class bytetrade extends Exchange {
         $timestamp = $this->safe_integer($order, 'timestamp');
         $datetime = $this->safe_string($order, 'datetime');
         $lastTradeTimestamp = $this->safe_integer($order, 'lastTradeTimestamp');
-        $price = $this->safe_float($order, 'price');
-        $amount = $this->safe_float($order, 'amount');
-        $filled = $this->safe_float($order, 'filled');
-        $remaining = $this->safe_float($order, 'remaining');
-        $cost = $this->safe_float($order, 'cost');
-        $average = $this->safe_float($order, 'average');
+        $price = $this->safe_number($order, 'price');
+        $amount = $this->safe_number($order, 'amount');
+        $filled = $this->safe_number($order, 'filled');
+        $remaining = $this->safe_number($order, 'remaining');
+        $cost = $this->safe_number($order, 'cost');
+        $average = $this->safe_number($order, 'average');
         $id = $this->safe_string($order, 'id');
         $type = $this->safe_string($order, 'type');
         $side = $this->safe_string($order, 'side');
-        $fee = $this->safe_value($order, 'fee');
+        $feeData = $this->safe_value($order, 'fee');
+        $feeCost = $this->safe_number($feeData, 'cost');
+        $feeRate = $this->safe_number($feeData, 'rate');
+        $feeCode = $this->safe_string($feeData, 'code');
+        $feeCurrency = $this->safe_currency_code($feeCode);
+        $fee = array(
+            'currency' => $feeCurrency,
+            'cost' => $feeCost,
+            'rate' => $feeRate,
+        );
         return array(
             'info' => $order,
             'id' => $id,
@@ -623,13 +635,16 @@ class bytetrade extends Exchange {
         $baseId = $market['baseId'];
         $baseCurrency = $this->currency($market['base']);
         $amountTruncated = $this->amount_to_precision($symbol, $amount);
-        $amountChain = $this->to_wei($amountTruncated, $baseCurrency['precision']);
+        $amountChain = $this->toWei ($amountTruncated, $baseCurrency['precision']);
+        $amountChainString = $this->number_to_string($amountChain);
         $quoteId = $market['quoteId'];
         $quoteCurrency = $this->currency($market['quote']);
         $priceRounded = $this->price_to_precision($symbol, $price);
-        $priceChain = $this->to_wei($priceRounded, $quoteCurrency['precision']);
+        $priceChain = $this->toWei ($priceRounded, $quoteCurrency['precision']);
+        $priceChainString = $this->number_to_string($priceChain);
         $now = $this->milliseconds();
-        $expiration = $this->milliseconds();
+        $expiryDelta = $this->safe_integer($this->options, 'orderExpiration', 31536000000);
+        $expiration = $this->milliseconds() . $expiryDelta;
         $datetime = $this->iso8601($now);
         $datetime = explode('.', $datetime)[0];
         $expirationDatetime = $this->iso8601($expiration);
@@ -640,7 +655,7 @@ class bytetrade extends Exchange {
         $totalFeeRate = $this->safe_string($params, 'totalFeeRate', 8);
         $chainFeeRate = $this->safe_string($params, 'chainFeeRate', 1);
         $fee = $this->safe_string($params, 'fee', $defaultFee);
-        $eightBytes = $this->integer_pow('2', '64');
+        $eightBytes = Precise.stringPow ('2', '64');
         $allByteStringArray = array(
             $this->number_to_be(1, 32),
             $this->number_to_le((int) floor($now / 1000), 4),
@@ -656,10 +671,10 @@ class bytetrade extends Exchange {
             $this->number_to_le($typeNum, 1),
             $this->number_to_le(strlen($normalSymbol), 1),
             $this->encode($normalSymbol),
-            $this->number_to_le($this->integer_divide($amountChain, $eightBytes), 8),
-            $this->number_to_le($this->integer_modulo($amountChain, $eightBytes), 8),
-            $this->number_to_le($this->integer_divide($priceChain, $eightBytes), 8),
-            $this->number_to_le($this->integer_modulo($priceChain, $eightBytes), 8),
+            $this->number_to_le(Precise::string_div($amountChainString, $eightBytes, 0), 8),
+            $this->number_to_le(Precise::string_mod($amountChainString, $eightBytes), 8),
+            $this->number_to_le(Precise::string_div($priceChainString, $eightBytes, 0), 8),
+            $this->number_to_le(Precise::string_mod($priceChainString, $eightBytes), 8),
             $this->number_to_le(0, 2),
             $this->number_to_le((int) floor($now / 1000), 4),
             $this->number_to_le((int) floor($expiration / 1000), 4),
@@ -689,10 +704,10 @@ class bytetrade extends Exchange {
             $this->number_to_le($typeNum, 1),
             $this->number_to_le(strlen($normalSymbol), 1),
             $this->encode($normalSymbol),
-            $this->number_to_le($this->integer_divide($amountChain, $eightBytes), 8),
-            $this->number_to_le($this->integer_modulo($amountChain, $eightBytes), 8),
-            $this->number_to_le($this->integer_divide($priceChain, $eightBytes), 8),
-            $this->number_to_le($this->integer_modulo($priceChain, $eightBytes), 8),
+            $this->number_to_le(Precise::string_div($amountChainString, $eightBytes, 0), 8),
+            $this->number_to_le(Precise::string_mod($amountChainString, $eightBytes), 8),
+            $this->number_to_le(Precise::string_div($priceChainString, $eightBytes, 0), 8),
+            $this->number_to_le(Precise::string_mod($priceChainString, $eightBytes), 8),
             $this->number_to_le(0, 2),
             $this->number_to_le((int) floor($now / 1000), 4),
             $this->number_to_le((int) floor($expiration / 1000), 4),
@@ -818,6 +833,9 @@ class bytetrade extends Exchange {
         if ($limit !== null) {
             $request['limit'] = $limit;
         }
+        if ($since !== null) {
+            $request['since'] = $since;
+        }
         $response = yield $this->publicGetOrdersOpen (array_merge($request, $params));
         return $this->parse_orders($response, $market, $since, $limit);
     }
@@ -838,6 +856,9 @@ class bytetrade extends Exchange {
         if ($limit !== null) {
             $request['limit'] = $limit;
         }
+        if ($since !== null) {
+            $request['since'] = $since;
+        }
         $response = yield $this->publicGetOrdersClosed (array_merge($request, $params));
         return $this->parse_orders($response, $market, $since, $limit);
     }
@@ -857,6 +878,9 @@ class bytetrade extends Exchange {
         }
         if ($limit !== null) {
             $request['limit'] = $limit;
+        }
+        if ($since !== null) {
+            $request['since'] = $since;
         }
         $response = yield $this->publicGetOrdersAll (array_merge($request, $params));
         return $this->parse_orders($response, $market, $since, $limit);
@@ -962,113 +986,6 @@ class bytetrade extends Exchange {
         );
     }
 
-    public function transfer($code, $amount, $address, $message = '', $params = array ()) {
-        $this->check_required_dependencies();
-        if ($this->apiKey === null) {
-            throw new ArgumentsRequired('transfer() requires $this->apiKey');
-        }
-        yield $this->load_markets();
-        $currency = $this->currency($code);
-        $amountTruncate = $this->decimal_to_precision($amount, TRUNCATE, $currency['info']['basePrecision'] - $currency['info']['transferPrecision'], DECIMAL_PLACES, NO_PADDING);
-        $amountChain = $this->to_wei($amountTruncate, $currency['precision']);
-        $assetType = intval($currency['id']);
-        $now = $this->milliseconds();
-        $expiration = $now;
-        $datetime = $this->iso8601($now);
-        $datetime = explode('.', $datetime)[0];
-        $expirationDatetime = $this->iso8601($expiration);
-        $expirationDatetime = explode('.', $expirationDatetime)[0];
-        $feeAmount = '300000000000000';
-        $defaultDappId = 'Sagittarius';
-        $dappId = $this->safe_string($params, 'dappId', $defaultDappId);
-        $eightBytes = $this->integer_pow('2', '64');
-        $byteStringArray = array(
-            $this->number_to_be(1, 32),
-            $this->number_to_le((int) floor($now / 1000), 4),
-            $this->number_to_le(1, 1),
-            $this->number_to_le((int) floor($expiration / 1000), 4),
-            $this->number_to_le(1, 1),
-            $this->number_to_le(28, 1),
-            $this->number_to_le(0, 8),
-            $this->number_to_le($feeAmount, 8),  // string for 32 bit php
-            $this->number_to_le(strlen($this->apiKey), 1),
-            $this->encode($this->apiKey),
-            $this->number_to_le(strlen($address), 1),
-            $this->encode($address),
-            $this->number_to_le($assetType, 4),
-            $this->number_to_le($this->integer_divide($amountChain, $eightBytes), 8),
-            $this->number_to_le($this->integer_modulo($amountChain, $eightBytes), 8),
-            $this->number_to_le(1, 1),
-            $this->number_to_le(strlen($message), 1),
-            $this->encode($message),
-            $this->number_to_le(0, 1),
-            $this->number_to_le(1, 1),
-            $this->number_to_le(strlen($dappId), 1),
-            $this->encode($dappId),
-            $this->number_to_le(0, 1),
-        );
-        $bytestring = $this->binary_concat_array($byteStringArray);
-        $hash = $this->hash($bytestring, 'sha256', 'hex');
-        $signature = $this->ecdsa($hash, $this->secret, 'secp256k1', null, true);
-        $recoveryParam = bin2hex($this->number_to_le($this->sum($signature['v'], 31), 1));
-        $mySignature = $recoveryParam . $signature['r'] . $signature['s'];
-        $operation = array(
-            'fee' => '300000000000000',
-            'from' => $this->apiKey,
-            'to' => $address,
-            'asset_type' => intval($currency['id']),
-            'amount' => (string) $amountChain,
-            'message' => $message,
-        );
-        $fatty = array(
-            'timestamp' => $datetime,
-            'expiration' => $expirationDatetime,
-            'operations' => array(
-                array(
-                    28,
-                    $operation,
-                ),
-            ),
-            'validate_type' => 0,
-            'dapp' => $dappId,
-            'signatures' => array(
-                $mySignature,
-            ),
-        );
-        $request = array(
-            'trObj' => $this->json($fatty),
-        );
-        $response = yield $this->publicPostTransactionTransfer ($request);
-        $timestamp = $this->milliseconds();
-        $statusCode = $this->safe_string($response, 'code');
-        $status = '';
-        if ($statusCode === '0') {
-            $status = 'submit success';
-        } else {
-            $status = 'submit fail';
-        }
-        return array(
-            'info' => $response,
-            'id' => '',
-            'timestamp' => $timestamp,
-            'datetime' => $this->iso8601($timestamp),
-            'lastTradeTimestamp' => null,
-            'status' => $status,
-            'symbol' => null,
-            'type' => null,
-            'side' => null,
-            'price' => null,
-            'amount' => null,
-            'filled' => null,
-            'remaining' => null,
-            'cost' => null,
-            'fee' => null,
-            'clientOrderId' => null,
-            'average' => null,
-            'trades' => null,
-        );
-    }
-
     public function fetch_my_trades($symbol = null, $since = null, $limit = null, $params = array ()) {
         if (!(is_array($params) && array_key_exists('userid', $params)) && ($this->apiKey === null)) {
             throw new ArgumentsRequired('fetchMyTrades() requires $this->apiKey or userid argument');
@@ -1083,6 +1000,9 @@ class bytetrade extends Exchange {
         }
         if ($limit !== null) {
             $request['limit'] = $limit;
+        }
+        if ($since !== null) {
+            $request['since'] = $since;
         }
         $response = yield $this->publicGetOrdersTrades (array_merge($request, $params));
         return $this->parse_trades($response, $market, $since, $limit);
@@ -1169,9 +1089,9 @@ class bytetrade extends Exchange {
         $datetime = $this->safe_string($transaction, 'datetime');
         $type = $this->safe_string($transaction, 'type');
         $status = $this->parse_transaction_status($this->safe_string($transaction, 'status'));
-        $amount = $this->safe_float($transaction, 'amount');
+        $amount = $this->safe_number($transaction, 'amount');
         $feeInfo = $this->safe_value($transaction, 'fee');
-        $feeCost = $this->safe_float($feeInfo, 'cost');
+        $feeCost = $this->safe_number($feeInfo, 'cost');
         $feeCurrencyId = $this->safe_string($feeInfo, 'code');
         $feeCode = $this->safe_currency_code($feeCurrencyId, $currency);
         $fee = array(
@@ -1216,193 +1136,6 @@ class bytetrade extends Exchange {
             'tag' => $tag,
             'chainType' => $chainType,
             'info' => $response,
-        );
-    }
-
-    public function withdraw($code, $amount, $address, $tag = null, $params = array ()) {
-        $this->check_required_dependencies();
-        $this->check_address($address);
-        yield $this->load_markets();
-        if ($this->apiKey === null) {
-            throw new ArgumentsRequired($this->id . ' withdraw() requires $this->apiKey');
-        }
-        $addressResponse = yield $this->fetch_deposit_address($code);
-        $chainTypeString = $this->safe_string($addressResponse, 'chainType');
-        $chainId = $this->safe_string($addressResponse['info'][0], 'chainId');
-        $middleAddress = '';
-        if ($chainTypeString === 'eos') {
-            $middleAddress = $address;
-        } else {
-            $middleAddress = $this->safe_string($addressResponse, 'address');
-        }
-        $operationId = 18;
-        if ($chainTypeString !== 'ethereum' && $chainTypeString !== 'etc' && $chainTypeString !== 'eos' && $chainTypeString !== 'cmt' && $chainTypeString !== 'naka') {
-            $operationId = 26;
-        }
-        $now = $this->milliseconds();
-        $expiration = 0;
-        $datetime = $this->iso8601($now);
-        $datetime = explode('.', $datetime)[0];
-        $expirationDatetime = $this->iso8601($expiration);
-        $expirationDatetime = explode('.', $expirationDatetime)[0];
-        $defaultDappId = 'Sagittarius';
-        $dappId = $this->safe_string($params, 'dappId', $defaultDappId);
-        $feeAmount = '300000000000000';
-        $currency = $this->currency($code);
-        $coinId = $currency['id'];
-        $amountTruncate = $this->decimal_to_precision($amount, TRUNCATE, $currency['info']['basePrecision'] - $currency['info']['transferPrecision'], DECIMAL_PLACES, NO_PADDING);
-        $amountChain = $this->to_wei($amountTruncate, $currency['info']['externalPrecision']);
-        $eightBytes = $this->integer_pow('2', '64');
-        $assetFee = 0;
-        $byteStringArray = array();
-        if ($operationId === 26) {
-            $assetFee = $currency['info']['fee'];
-            $byteStringArray = array(
-                $this->number_to_be(1, 32),
-                $this->number_to_le((int) floor($now / 1000), 4),
-                $this->number_to_le(1, 1),
-                $this->number_to_le((int) floor($expiration / 1000), 4),
-                $this->number_to_le(1, 1),
-                $this->number_to_le($operationId, 1),
-                $this->number_to_le(0, 8),
-                $this->number_to_le($feeAmount, 8),  // string for 32 bit php
-                $this->number_to_le(strlen($this->apiKey), 1),
-                $this->encode($this->apiKey),
-                $this->number_to_le(strlen($address), 1),
-                $this->encode($address),
-                $this->number_to_le(intval($coinId), 4),
-                $this->number_to_le($this->integer_divide($amountChain, $eightBytes), 8),
-                $this->number_to_le($this->integer_modulo($amountChain, $eightBytes), 8),
-                $this->number_to_le(1, 1),
-                $this->number_to_le($this->integer_divide($assetFee, $eightBytes), 8),
-                $this->number_to_le($this->integer_modulo($assetFee, $eightBytes), 8),
-                $this->number_to_le(0, 1),
-                $this->number_to_le(1, 1),
-                $this->number_to_le(strlen($dappId), 1),
-                $this->encode($dappId),
-                $this->number_to_le(0, 1),
-            );
-        } else {
-            $byteStringArray = array(
-                $this->number_to_be(1, 32),
-                $this->number_to_le((int) floor($now / 1000), 4),
-                $this->number_to_le(1, 1),
-                $this->number_to_le((int) floor($expiration / 1000), 4),
-                $this->number_to_le(1, 1),
-                $this->number_to_le($operationId, 1),
-                $this->number_to_le(0, 8),
-                $this->number_to_le($feeAmount, 8),  // string for 32 bit php
-                $this->number_to_le(strlen($this->apiKey), 1),
-                $this->encode($this->apiKey),
-                $this->number_to_le((int) floor($now / 1000), 4),
-                $this->number_to_le(1, 1),
-                $this->number_to_le(4, 1),
-                $this->number_to_le(0, 8),
-                $this->number_to_le($feeAmount, 8),
-                $this->number_to_le(strlen($this->apiKey), 1),
-                $this->encode($this->apiKey),
-                $this->number_to_le(strlen($middleAddress), 1),
-                $this->encode($middleAddress),
-                $this->number_to_le(intval($coinId), 4),
-                $this->number_to_le($this->integer_divide($amountChain, $eightBytes), 8),
-                $this->number_to_le($this->integer_modulo($amountChain, $eightBytes), 8),
-                $this->number_to_le(0, 1),
-                $this->number_to_le(1, 1),
-                $this->number_to_le(strlen($dappId), 1),
-                $this->encode($dappId),
-                $this->number_to_le(0, 1),
-            );
-        }
-        $bytestring = $this->binary_concat_array($byteStringArray);
-        $hash = $this->hash($bytestring, 'sha256', 'hex');
-        $signature = $this->ecdsa($hash, $this->secret, 'secp256k1', null, true);
-        $recoveryParam = bin2hex($this->number_to_le($this->sum($signature['v'], 31), 1));
-        $mySignature = $recoveryParam . $signature['r'] . $signature['s'];
-        $fatty = null;
-        $request = null;
-        $operation = null;
-        $chainContractAddress = $this->safe_string($currency['info'], 'chainContractAddress');
-        if ($operationId === 26) {
-            $operation = array(
-                'fee' => $feeAmount,
-                'from' => $this->apiKey,
-                'to_external_address' => $address,
-                'asset_type' => intval($coinId),
-                'amount' => $amountChain,
-                'asset_fee' => $assetFee,
-            );
-            $fatty = array(
-                'timestamp' => $datetime,
-                'expiration' => $expirationDatetime,
-                'operations' => array(
-                    array(
-                        $operationId,
-                        $operation,
-                    ),
-                ),
-                'validate_type' => 0,
-                'dapp' => $dappId,
-                'signatures' => array(
-                    $mySignature,
-                ),
-            );
-            $request = array(
-                'chainType' => $chainId,
-                'trObj' => $this->json($fatty),
-                'chainContractAddress' => $chainContractAddress,
-            );
-        } else {
-            $operation = array(
-                'fee' => $feeAmount,
-                'from' => $this->apiKey,
-                'to_external_address' => $middleAddress,
-                'asset_type' => intval($coinId),
-                'amount' => $amountChain,
-                'asset_fee' => $assetFee,
-            );
-            $middle = array(
-                'fee' => $feeAmount,
-                'proposaler' => $this->apiKey,
-                'expiration_time' => $datetime,
-                'proposed_ops' => [array(
-                    'op' => [4, $operation],
-                )],
-            );
-            $fatty = array(
-                'timestamp' => $datetime,
-                'expiration' => $expirationDatetime,
-                'operations' => array(
-                    array(
-                        $operationId,
-                        $middle,
-                    ),
-                ),
-                'validate_type' => 0,
-                'dapp' => $dappId,
-                'signatures' => array(
-                    $mySignature,
-                ),
-            );
-            if ($chainTypeString === 'eos') {
-                $request = array(
-                    'chainType' => $chainId,
-                    'toExternalAddress' => 'noneed',
-                    'trObj' => $this->json($fatty),
-                    'chainContractAddress' => $chainContractAddress,
-                );
-            } else {
-                $request = array(
-                    'chainType' => $chainId,
-                    'toExternalAddress' => $address,
-                    'trObj' => $this->json($fatty),
-                    'chainContractAddress' => $chainContractAddress,
-                );
-            }
-        }
-        $response = yield $this->publicPostTransactionWithdraw ($request);
-        return array(
-            'info' => $response,
-            'id' => $this->safe_string($response, 'id'),
         );
     }
 

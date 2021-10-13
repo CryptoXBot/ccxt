@@ -11,6 +11,7 @@ from ccxt.base.errors import BadSymbol
 from ccxt.base.errors import InsufficientFunds
 from ccxt.base.errors import OrderNotFound
 from ccxt.base.decimal_to_precision import TICK_SIZE
+from ccxt.base.precise import Precise
 
 
 class ndax(Exchange):
@@ -38,12 +39,14 @@ class ndax(Exchange):
                 'fetchMyTrades': True,
                 'fetchOHLCV': True,
                 'fetchOpenOrders': True,
-                'fetchOrders': True,
                 'fetchOrder': True,
                 'fetchOrderBook': True,
                 'fetchOrderTrades': True,
+                'fetchOrders': True,
                 'fetchTicker': True,
                 'fetchTrades': True,
+                'fetchWithdrawals': True,
+                'signIn': True,
             },
             'timeframes': {
                 '1m': '60',
@@ -194,6 +197,10 @@ class ndax(Exchange):
                 'apiKey': True,
                 'secret': True,
                 'uid': True,
+                # these credentials are required for signIn() and withdraw()
+                'login': True,
+                'password': True,
+                'twofa': True,
             },
             'precisionMode': TICK_SIZE,
             'exceptions': {
@@ -204,6 +211,7 @@ class ndax(Exchange):
                 },
                 'broad': {
                     'Invalid InstrumentId': BadSymbol,  # {"result":false,"errormsg":"Invalid InstrumentId: 10000","errorcode":100,"detail":null}
+                    'This endpoint requires 2FACode along with the payload': AuthenticationError,
                 },
             },
             'options': {
@@ -219,6 +227,46 @@ class ndax(Exchange):
                 },
             },
         })
+
+    def sign_in(self, params={}):
+        self.check_required_credentials()
+        if self.login is None or self.password is None or self.twofa is None:
+            raise AuthenticationError(self.id + ' signIn() requires exchange.login, exchange.password and exchange.twofa credentials')
+        request = {
+            'grant_type': 'client_credentials',  # the only supported value
+        }
+        response = self.publicGetAuthenticate(self.extend(request, params))
+        #
+        #     {
+        #         "Authenticated":true,
+        #         "Requires2FA":true,
+        #         "AuthType":"Google",
+        #         "AddtlInfo":"",
+        #         "Pending2FaToken": "6f5c4e66-f3ee-493e-9227-31cc0583b55f"
+        #     }
+        #
+        sessionToken = self.safe_string(response, 'SessionToken')
+        if sessionToken is not None:
+            self.options['sessionToken'] = sessionToken
+            return response
+        pending2faToken = self.safe_string(response, 'Pending2FaToken')
+        if pending2faToken is not None:
+            self.options['pending2faToken'] = pending2faToken
+            request = {
+                'Code': self.oath(),
+            }
+            response = self.publicGetAuthenticate2FA(self.extend(request, params))
+            #
+            #     {
+            #         "Authenticated": True,
+            #         "UserId":57765,
+            #         "SessionToken":"4a2a5857-c4e5-4fac-b09e-2c4c30b591a0"
+            #     }
+            #
+            sessionToken = self.safe_string(response, 'SessionToken')
+            self.options['sessionToken'] = sessionToken
+            return response
+        return response
 
     def fetch_currencies(self, params={}):
         omsId = self.safe_integer(self.options, 'omsId', 1)
@@ -249,7 +297,7 @@ class ndax(Exchange):
             name = self.safe_string(currency, 'ProductFullName')
             type = self.safe_string(currency, 'ProductType')
             code = self.safe_currency_code(self.safe_string(currency, 'Product'))
-            precision = self.safe_float(currency, 'TickSize')
+            precision = self.safe_number(currency, 'TickSize')
             isDisabled = self.safe_value(currency, 'IsDisabled')
             active = not isDisabled
             result[code] = {
@@ -328,8 +376,8 @@ class ndax(Exchange):
             quote = self.safe_currency_code(self.safe_string(market, 'Product2Symbol'))
             symbol = base + '/' + quote
             precision = {
-                'amount': self.safe_float(market, 'QuantityIncrement'),
-                'price': self.safe_float(market, 'PriceIncrement'),
+                'amount': self.safe_number(market, 'QuantityIncrement'),
+                'price': self.safe_number(market, 'PriceIncrement'),
             }
             sessionStatus = self.safe_string(market, 'SessionStatus')
             isDisable = self.safe_value(market, 'IsDisable')
@@ -347,11 +395,11 @@ class ndax(Exchange):
                 'precision': precision,
                 'limits': {
                     'amount': {
-                        'min': self.safe_float(market, 'MinimumQuantity'),
+                        'min': self.safe_number(market, 'MinimumQuantity'),
                         'max': None,
                     },
                     'price': {
-                        'min': self.safe_float(market, 'MinimumPrice'),
+                        'min': self.safe_number(market, 'MinimumPrice'),
                         'max': None,
                     },
                     'cost': {
@@ -362,9 +410,10 @@ class ndax(Exchange):
             })
         return result
 
-    def parse_order_book(self, orderbook, timestamp=None, bidsKey='bids', asksKey='asks', priceKey=6, amountKey=8):
+    def parse_order_book(self, orderbook, symbol, timestamp=None, bidsKey='bids', asksKey='asks', priceKey=6, amountKey=8):
         nonce = None
         result = {
+            'symbol': symbol,
             'bids': [],
             'asks': [],
             'timestamp': None,
@@ -384,7 +433,7 @@ class ndax(Exchange):
                 newNonce = self.safe_integer(level, 0)
                 nonce = max(nonce, newNonce)
             bidask = self.parse_bid_ask(level, priceKey, amountKey)
-            levelSide = self.safe_value(level, 9)
+            levelSide = self.safe_integer(level, 9)
             side = asksKey if levelSide else bidsKey
             result[side].append(bidask)
         result['bids'] = self.sort_by(result['bids'], 0, True)
@@ -427,7 +476,7 @@ class ndax(Exchange):
         #         [97244115,0,1607456142964,0,19069.32,1,19069.99,8,0.141604,1],
         #     ]
         #
-        return self.parse_order_book(response)
+        return self.parse_order_book(response, symbol)
 
     def parse_ticker(self, ticker, market=None):
         #
@@ -465,26 +514,26 @@ class ndax(Exchange):
         timestamp = self.safe_integer(ticker, 'TimeStamp')
         marketId = self.safe_string(ticker, 'InstrumentId')
         symbol = self.safe_symbol(marketId, market)
-        last = self.safe_float(ticker, 'LastTradedPx')
-        percentage = self.safe_float(ticker, 'Rolling24HrPxChangePercent')
-        change = self.safe_float(ticker, 'Rolling24HrPxChange')
-        open = self.safe_float(ticker, 'SessionOpen')
+        last = self.safe_number(ticker, 'LastTradedPx')
+        percentage = self.safe_number(ticker, 'Rolling24HrPxChangePercent')
+        change = self.safe_number(ticker, 'Rolling24HrPxChange')
+        open = self.safe_number(ticker, 'SessionOpen')
         average = None
         if (last is not None) and (change is not None):
             average = self.sum(last, open) / 2
-        baseVolume = self.safe_float(ticker, 'Rolling24HrVolume')
-        quoteVolume = self.safe_float(ticker, 'Rolling24HrNotional')
+        baseVolume = self.safe_number(ticker, 'Rolling24HrVolume')
+        quoteVolume = self.safe_number(ticker, 'Rolling24HrNotional')
         vwap = self.vwap(baseVolume, quoteVolume)
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'SessionHigh'),
-            'low': self.safe_float(ticker, 'SessionLow'),
-            'bid': self.safe_float(ticker, 'BestBid'),
-            'bidVolume': None,  # self.safe_float(ticker, 'BidQty'), always shows 0
-            'ask': self.safe_float(ticker, 'BestOffer'),
-            'askVolume': None,  # self.safe_float(ticker, 'AskQty'), always shows 0
+            'high': self.safe_number(ticker, 'SessionHigh'),
+            'low': self.safe_number(ticker, 'SessionLow'),
+            'bid': self.safe_number(ticker, 'BestBid'),
+            'bidVolume': None,  # self.safe_number(ticker, 'BidQty'), always shows 0
+            'ask': self.safe_number(ticker, 'BestOffer'),
+            'askVolume': None,  # self.safe_number(ticker, 'AskQty'), always shows 0
             'vwap': vwap,
             'open': open,
             'close': last,
@@ -555,11 +604,11 @@ class ndax(Exchange):
         #
         return [
             self.safe_integer(ohlcv, 0),
-            self.safe_float(ohlcv, 3),
-            self.safe_float(ohlcv, 1),
-            self.safe_float(ohlcv, 2),
-            self.safe_float(ohlcv, 4),
-            self.safe_float(ohlcv, 5),
+            self.safe_number(ohlcv, 3),
+            self.safe_number(ohlcv, 1),
+            self.safe_number(ohlcv, 2),
+            self.safe_number(ohlcv, 4),
+            self.safe_number(ohlcv, 5),
         ]
 
     def fetch_ohlcv(self, symbol, timeframe='1m', since=None, limit=None, params={}):
@@ -575,14 +624,14 @@ class ndax(Exchange):
         now = self.milliseconds()
         if since is None:
             if limit is not None:
-                request['FromDate'] = self.ymd(now - duration * limit * 1000)
-                request['ToDate'] = self.ymd(now)
+                request['FromDate'] = self.ymdhms(now - duration * limit * 1000)
+                request['ToDate'] = self.ymdhms(now)
         else:
-            request['FromDate'] = self.ymd(since)
+            request['FromDate'] = self.ymdhms(since)
             if limit is None:
-                request['ToDate'] = self.ymd(now)
+                request['ToDate'] = self.ymdhms(now)
             else:
-                request['ToDate'] = self.ymd(self.sum(since, duration * limit * 1000))
+                request['ToDate'] = self.ymdhms(self.sum(since, duration * limit * 1000))
         response = self.publicGetGetTickerHistory(self.extend(request, params))
         #
         #     [
@@ -697,13 +746,13 @@ class ndax(Exchange):
         #         "PegPriceType":"Unknown",
         #         "PegOffset":0.0000000000000000000000000000,
         #         "PegLimitOffset":0.0000000000000000000000000000,
-        #         "IpAddress":"5.228.233.138",
+        #         "IpAddress":"x.x.x.x",
         #         "ClientOrderIdUuid":null,
         #         "OMSId":1
         #     }
         #
-        price = None
-        amount = None
+        priceString = None
+        amountString = None
         cost = None
         timestamp = None
         id = None
@@ -714,13 +763,11 @@ class ndax(Exchange):
         fee = None
         type = None
         if isinstance(trade, list):
-            price = self.safe_float(trade, 3)
-            amount = self.safe_float(trade, 2)
-            if (price is not None) and (amount is not None):
-                cost = price * amount
+            priceString = self.safe_string(trade, 3)
+            amountString = self.safe_string(trade, 2)
             timestamp = self.safe_integer(trade, 6)
             id = self.safe_string(trade, 0)
-            marketId = self.safe_integer(trade, 1)
+            marketId = self.safe_string(trade, 1)
             takerSide = self.safe_value(trade, 8)
             side = 'sell' if takerSide else 'buy'
             orderId = self.safe_string(trade, 4)
@@ -729,13 +776,13 @@ class ndax(Exchange):
             id = self.safe_string(trade, 'TradeId')
             orderId = self.safe_string_2(trade, 'OrderId', 'OrigOrderId')
             marketId = self.safe_string_2(trade, 'InstrumentId', 'Instrument')
-            price = self.safe_float(trade, 'Price')
-            amount = self.safe_float(trade, 'Quantity')
-            cost = self.safe_float_2(trade, 'Value', 'GrossValueExecuted')
+            priceString = self.safe_string(trade, 'Price')
+            amountString = self.safe_string(trade, 'Quantity')
+            cost = self.safe_number_2(trade, 'Value', 'GrossValueExecuted')
             takerOrMaker = self.safe_string_lower(trade, 'MakerTaker')
             side = self.safe_string_lower(trade, 'Side')
             type = self.safe_string_lower(trade, 'OrderType')
-            feeCost = self.safe_float(trade, 'Fee')
+            feeCost = self.safe_number(trade, 'Fee')
             if feeCost is not None:
                 feeCurrencyId = self.safe_string(trade, 'FeeProductId')
                 feeCurrencyCode = self.safe_currency_code(feeCurrencyId)
@@ -743,6 +790,10 @@ class ndax(Exchange):
                     'cost': feeCost,
                     'currency': feeCurrencyCode,
                 }
+        price = self.parse_number(priceString)
+        amount = self.parse_number(amountString)
+        if cost is None:
+            cost = self.parse_number(Precise.string_mul(priceString, amountString))
         symbol = self.safe_symbol(marketId, market)
         return {
             'info': trade,
@@ -781,12 +832,14 @@ class ndax(Exchange):
         return self.parse_trades(response, market, since, limit)
 
     def fetch_accounts(self, params={}):
+        if not self.login:
+            raise AuthenticationError(self.id + ' fetchAccounts() requires exchange.login email credential')
         omsId = self.safe_integer(self.options, 'omsId', 1)
         self.check_required_credentials()
         request = {
             'omsId': omsId,
             'UserId': self.uid,
-            'UserName': 'igor@ccxt.trade',
+            'UserName': self.login,
         }
         response = self.privateGetGetUserAccounts(self.extend(request, params))
         #
@@ -846,14 +899,18 @@ class ndax(Exchange):
         #         },
         #     ]
         #
-        result = {'info': response}
+        result = {
+            'info': response,
+            'timestamp': None,
+            'datetime': None,
+        }
         for i in range(0, len(response)):
             balance = response[i]
             currencyId = self.safe_string(balance, 'ProductId')
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['total'] = self.safe_float(balance, 'Amount')
-            account['used'] = self.safe_float(balance, 'Hold')
+            account['total'] = self.safe_string(balance, 'Amount')
+            account['used'] = self.safe_string(balance, 'Hold')
             result[code] = account
         return self.parse_balance(result)
 
@@ -899,8 +956,8 @@ class ndax(Exchange):
         type = self.parse_ledger_entry_type(self.safe_string(item, 'ReferenceType'))
         currencyId = self.safe_string(item, 'ProductId')
         code = self.safe_currency_code(currencyId, currency)
-        credit = self.safe_float(item, 'CR')
-        debit = self.safe_float(item, 'DR')
+        credit = self.safe_number(item, 'CR')
+        debit = self.safe_number(item, 'DR')
         amount = None
         direction = None
         if credit > 0:
@@ -911,7 +968,7 @@ class ndax(Exchange):
             direction = 'out'
         timestamp = self.safe_integer(item, 'TimeStamp')
         before = None
-        after = self.safe_float(item, 'Balance')
+        after = self.safe_number(item, 'Balance')
         if direction == 'out':
             before = self.sum(after, amount)
         elif direction == 'in':
@@ -1053,33 +1110,26 @@ class ndax(Exchange):
         #
         id = self.safe_string_2(order, 'ReplacementOrderId', 'OrderId')
         timestamp = self.safe_integer(order, 'ReceiveTime')
-        lastTradeTimestamp = None
+        lastTradeTimestamp = self.safe_integer(order, 'LastUpdatedTime')
         marketId = self.safe_string(order, 'Instrument')
         symbol = self.safe_symbol(marketId, market)
         side = self.safe_string_lower(order, 'Side')
         type = self.safe_string_lower(order, 'OrderType')
         clientOrderId = self.safe_string_2(order, 'ReplacementClOrdId', 'ClientOrderId')
-        price = self.safe_float(order, 'Price', 0.0)
+        price = self.safe_number(order, 'Price', 0.0)
         price = price if (price > 0.0) else None
-        amount = self.safe_float(order, 'OrigQuantity')
-        filled = self.safe_float(order, 'QuantityExecuted')
-        cost = self.safe_float(order, 'GrossValueExecuted')
-        remaining = None
-        average = None
-        if filled is not None:
-            if amount is not None:
-                remaining = max(0, amount - filled)
-            if filled > 0:
-                lastTradeTimestamp = self.safe_integer(order, 'LastUpdatedTime')
-                average = self.safe_float(order, 'AvgPrice', 0.0)
-                average = average if (average > 0) else None
-        stopPrice = self.safe_float(order, 'StopPrice', 0.0)
+        amount = self.safe_number(order, 'OrigQuantity')
+        filled = self.safe_number(order, 'QuantityExecuted')
+        cost = self.safe_number(order, 'GrossValueExecuted')
+        average = self.safe_number(order, 'AvgPrice', 0.0)
+        average = average if (average > 0) else None
+        stopPrice = self.safe_number(order, 'StopPrice', 0.0)
         stopPrice = stopPrice if (stopPrice > 0.0) else None
         timeInForce = None
         status = self.parse_order_status(self.safe_string(order, 'OrderState'))
         fee = None
         trades = None
-        return {
+        return self.safe_order({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,
@@ -1098,10 +1148,10 @@ class ndax(Exchange):
             'amount': amount,
             'filled': filled,
             'average': average,
-            'remaining': remaining,
+            'remaining': None,
             'fee': fee,
             'trades': trades,
-        }
+        })
 
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         omsId = self.safe_integer(self.options, 'omsId', 1)
@@ -1216,7 +1266,7 @@ class ndax(Exchange):
             market = self.market(symbol)
             request['InstrumentId'] = market['id']
         if since is not None:
-            request['StartTimeStamp'] = since
+            request['StartTimeStamp'] = int(since / 1000)
         if limit is not None:
             request['Depth'] = limit
         response = self.privateGetGetTradesHistory(self.extend(request, params))
@@ -1409,7 +1459,7 @@ class ndax(Exchange):
             market = self.market(symbol)
             request['InstrumentId'] = market['id']
         if since is not None:
-            request['StartTimeStamp'] = since
+            request['StartTimeStamp'] = int(since / 1000)
         if limit is not None:
             request['Depth'] = limit
         response = self.privateGetGetOrdersHistory(self.extend(request, params))
@@ -1457,7 +1507,7 @@ class ndax(Exchange):
         #             "PegPriceType":"Unknown",
         #             "PegOffset":0.0000000000000000000000000000,
         #             "PegLimitOffset":0.0000000000000000000000000000,
-        #             "IpAddress":"5.228.233.138",
+        #             "IpAddress":"x.x.x.x",
         #             "ClientOrderIdUuid":null,
         #             "OMSId":1
         #         },
@@ -1524,7 +1574,7 @@ class ndax(Exchange):
         #         "PegPriceType":"Unknown",
         #         "PegOffset":0.0000000000000000000000000000,
         #         "PegLimitOffset":0.0000000000000000000000000000,
-        #         "IpAddress":"5.228.233.138",
+        #         "IpAddress":"x.x.x.x",
         #         "ClientOrderIdUuid":null,
         #         "OMSId":1
         #     }
@@ -1544,7 +1594,7 @@ class ndax(Exchange):
         request = {
             'OMSId': int(omsId),
             # 'AccountId': accountId,
-            'OrderId': id,
+            'OrderId': int(id),
         }
         response = self.privatePostGetOrderHistoryByOrderId(self.extend(request, params))
         #
@@ -1591,7 +1641,7 @@ class ndax(Exchange):
         #             "PegPriceType":"Unknown",
         #             "PegOffset":0.0000000000000000000000000000,
         #             "PegLimitOffset":0.0000000000000000000000000000,
-        #             "IpAddress":"5.228.233.138",
+        #             "IpAddress":"x.x.x.x",
         #             "ClientOrderIdUuid":null,
         #             "OMSId":1
         #         },
@@ -1862,8 +1912,8 @@ class ndax(Exchange):
             updated = self.safe_integer(templateForm, 'LastUpdated', updated)
         addressTo = address
         status = self.parse_transaction_status_by_type(self.safe_string(transaction, 'TicketStatus'), type)
-        amount = self.safe_float(transaction, 'Amount')
-        feeCost = self.safe_float(transaction, 'FeeAmount')
+        amount = self.safe_number(transaction, 'Amount')
+        feeCost = self.safe_number(transaction, 'FeeAmount')
         fee = None
         if feeCost is not None:
             fee = {'currency': code, 'cost': feeCost}
@@ -1887,6 +1937,85 @@ class ndax(Exchange):
             'fee': fee,
         }
 
+    def withdraw(self, code, amount, address, tag=None, params={}):
+        tag, params = self.handle_withdraw_tag_and_params(tag, params)
+        # self method required login, password and twofa key
+        sessionToken = self.safe_string(self.options, 'sessionToken')
+        if sessionToken is None:
+            raise AuthenticationError(self.id + ' call signIn() method to obtain a session token')
+        self.check_address(address)
+        omsId = self.safe_integer(self.options, 'omsId', 1)
+        self.load_markets()
+        self.load_accounts()
+        defaultAccountId = self.safe_integer_2(self.options, 'accountId', 'AccountId', int(self.accounts[0]['id']))
+        accountId = self.safe_integer_2(params, 'accountId', 'AccountId', defaultAccountId)
+        params = self.omit(params, ['accountId', 'AccountId'])
+        currency = self.currency(code)
+        withdrawTemplateTypesRequest = {
+            'omsId': omsId,
+            'AccountId': accountId,
+            'ProductId': currency['id'],
+        }
+        withdrawTemplateTypesResponse = self.privateGetGetWithdrawTemplateTypes(withdrawTemplateTypesRequest)
+        #
+        #     {
+        #         result: True,
+        #         errormsg: null,
+        #         statuscode: "0",
+        #         TemplateTypes: [
+        #             {AccountProviderId: "14", TemplateName: "ToExternalBitcoinAddress", AccountProviderName: "BitgoRPC-BTC"},
+        #             {AccountProviderId: "20", TemplateName: "ToExternalBitcoinAddress", AccountProviderName: "TrezorBTC"},
+        #             {AccountProviderId: "31", TemplateName: "BTC", AccountProviderName: "BTC Fireblocks 1"}
+        #         ]
+        #     }
+        #
+        templateTypes = self.safe_value(withdrawTemplateTypesResponse, 'TemplateTypes', [])
+        firstTemplateType = self.safe_value(templateTypes, 0)
+        if firstTemplateType is None:
+            raise ExchangeError(self.id + ' withdraw() could not find a withdraw template type for ' + currency['code'])
+        templateName = self.safe_string(firstTemplateType, 'TemplateName')
+        withdrawTemplateRequest = {
+            'omsId': omsId,
+            'AccountId': accountId,
+            'ProductId': currency['id'],
+            'TemplateType': templateName,
+            'AccountProviderId': firstTemplateType['AccountProviderId'],
+        }
+        withdrawTemplateResponse = self.privateGetGetWithdrawTemplate(withdrawTemplateRequest)
+        #
+        #     {
+        #         result: True,
+        #         errormsg: null,
+        #         statuscode: "0",
+        #         Template: "{\"TemplateType\":\"ToExternalBitcoinAddress\",\"Comment\":\"\",\"ExternalAddress\":\"\"}"
+        #     }
+        #
+        template = self.safe_string(withdrawTemplateResponse, 'Template')
+        if template is None:
+            raise ExchangeError(self.id + ' withdraw() could not find a withdraw template for ' + currency['code'])
+        withdrawTemplate = json.loads(template)
+        withdrawTemplate['ExternalAddress'] = address
+        if tag is not None:
+            if 'Memo' in withdrawTemplate:
+                withdrawTemplate['Memo'] = tag
+        withdrawPayload = {
+            'omsId': omsId,
+            'AccountId': accountId,
+            'ProductId': currency['id'],
+            'TemplateForm': self.json(withdrawTemplate),
+            'TemplateType': templateName,
+        }
+        withdrawRequest = {
+            'TfaType': 'Google',
+            'TFaCode': self.oath(),
+            'Payload': self.json(withdrawPayload),
+        }
+        response = self.privatePostCreateWithdrawTicket(self.deep_extend(withdrawRequest, params))
+        return {
+            'info': response,
+            'id': self.safe_string(response, 'Id'),
+        }
+
     def nonce(self):
         return self.milliseconds()
 
@@ -1894,19 +2023,40 @@ class ndax(Exchange):
         url = self.urls['api'][api] + '/' + self.implode_params(path, params)
         query = self.omit(params, self.extract_params(path))
         if api == 'public':
+            if path == 'Authenticate':
+                auth = self.login + ':' + self.password
+                auth64 = self.string_to_base64(auth)
+                headers = {
+                    'Authorization': 'Basic ' + self.decode(auth64),
+                    # 'Content-Type': 'application/json',
+                }
+            elif path == 'Authenticate2FA':
+                pending2faToken = self.safe_string(self.options, 'pending2faToken')
+                if pending2faToken is not None:
+                    headers = {
+                        'Pending2FaToken': pending2faToken,
+                        # 'Content-Type': 'application/json',
+                    }
+                    query = self.omit(query, 'pending2faToken')
             if query:
                 url += '?' + self.urlencode(query)
         elif api == 'private':
             self.check_required_credentials()
-            nonce = str(self.nonce())
-            auth = nonce + self.uid + self.apiKey
-            signature = self.hmac(self.encode(auth), self.encode(self.secret))
-            headers = {
-                'Nonce': nonce,
-                'APIKey': self.apiKey,
-                'Signature': signature,
-                'UserId': self.uid,
-            }
+            sessionToken = self.safe_string(self.options, 'sessionToken')
+            if sessionToken is None:
+                nonce = str(self.nonce())
+                auth = nonce + self.uid + self.apiKey
+                signature = self.hmac(self.encode(auth), self.encode(self.secret))
+                headers = {
+                    'Nonce': nonce,
+                    'APIKey': self.apiKey,
+                    'Signature': signature,
+                    'UserId': self.uid,
+                }
+            else:
+                headers = {
+                    'APToken': sessionToken,
+                }
             if method == 'POST':
                 headers['Content-Type'] = 'application/json'
                 body = self.json(query)

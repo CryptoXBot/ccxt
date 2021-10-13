@@ -7,6 +7,7 @@ namespace ccxt\async;
 
 use Exception; // a common import
 use \ccxt\ArgumentsRequired;
+use \ccxt\Precise;
 
 class coinfalcon extends Exchange {
 
@@ -21,6 +22,7 @@ class coinfalcon extends Exchange {
                 'cancelOrder' => true,
                 'createOrder' => true,
                 'fetchBalance' => true,
+                'fetchDeposits' => true,
                 'fetchMarkets' => true,
                 'fetchMyTrades' => true,
                 'fetchOpenOrders' => true,
@@ -29,6 +31,8 @@ class coinfalcon extends Exchange {
                 'fetchTicker' => true,
                 'fetchTickers' => true,
                 'fetchTrades' => true,
+                'fetchWithdrawals' => true,
+                'withdraw' => true,
             ),
             'urls' => array(
                 'logo' => 'https://user-images.githubusercontent.com/1294454/41822275-ed982188-77f5-11e8-92bb-496bcd14ca52.jpg',
@@ -42,6 +46,7 @@ class coinfalcon extends Exchange {
                 'public' => array(
                     'get' => array(
                         'markets',
+                        'markets/{market}',
                         'markets/{market}/orders',
                         'markets/{market}/trades',
                     ),
@@ -51,13 +56,22 @@ class coinfalcon extends Exchange {
                         'user/accounts',
                         'user/orders',
                         'user/orders/{id}',
+                        'user/orders/{id}/trades',
                         'user/trades',
+                        'user/fees',
+                        'account/withdrawals/{id}',
+                        'account/withdrawals',
+                        'account/deposit/{id}',
+                        'account/deposits',
+                        'account/deposit_address',
                     ),
                     'post' => array(
                         'user/orders',
+                        'account/withdraw',
                     ),
                     'delete' => array(
                         'user/orders/{id}',
+                        'account/withdrawals/{id}',
                     ),
                 ),
             ),
@@ -122,7 +136,7 @@ class coinfalcon extends Exchange {
         $marketId = $this->safe_string($ticker, 'name');
         $symbol = $this->safe_symbol($marketId, $market, '-');
         $timestamp = $this->milliseconds();
-        $last = floatval($ticker['last_price']);
+        $last = $this->safe_number($ticker, 'last_price');
         return array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
@@ -138,11 +152,11 @@ class coinfalcon extends Exchange {
             'close' => $last,
             'last' => $last,
             'previousClose' => null,
-            'change' => $this->safe_float($ticker, 'change_in_24h'),
+            'change' => $this->safe_number($ticker, 'change_in_24h'),
             'percentage' => null,
             'average' => null,
             'baseVolume' => null,
-            'quoteVolume' => $this->safe_float($ticker, 'volume'),
+            'quoteVolume' => $this->safe_number($ticker, 'volume'),
             'info' => $ticker,
         );
     }
@@ -174,25 +188,22 @@ class coinfalcon extends Exchange {
         );
         $response = yield $this->publicGetMarketsMarketOrders (array_merge($request, $params));
         $data = $this->safe_value($response, 'data', array());
-        return $this->parse_order_book($data, null, 'bids', 'asks', 'price', 'size');
+        return $this->parse_order_book($data, $symbol, null, 'bids', 'asks', 'price', 'size');
     }
 
     public function parse_trade($trade, $market = null) {
         $timestamp = $this->parse8601($this->safe_string($trade, 'created_at'));
-        $price = $this->safe_float($trade, 'price');
-        $amount = $this->safe_float($trade, 'size');
+        $priceString = $this->safe_string($trade, 'price');
+        $amountString = $this->safe_string($trade, 'size');
+        $price = $this->parse_number($priceString);
+        $amount = $this->parse_number($amountString);
+        $cost = $this->parse_number(Precise::string_mul($priceString, $amountString));
         $symbol = $market['symbol'];
-        $cost = null;
-        if ($price !== null) {
-            if ($amount !== null) {
-                $cost = floatval($this->cost_to_precision($symbol, $price * $amount));
-            }
-        }
         $tradeId = $this->safe_string($trade, 'id');
         $side = $this->safe_string($trade, 'side');
         $orderId = $this->safe_string($trade, 'order_id');
         $fee = null;
-        $feeCost = $this->safe_float($trade, 'fee');
+        $feeCost = $this->safe_number($trade, 'fee');
         if ($feeCost !== null) {
             $feeCurrencyCode = $this->safe_string($trade, 'fee_currency_code');
             $fee = array(
@@ -260,11 +271,10 @@ class coinfalcon extends Exchange {
             $balance = $balances[$i];
             $currencyId = $this->safe_string($balance, 'currency_code');
             $code = $this->safe_currency_code($currencyId);
-            $account = array(
-                'free' => $this->safe_float($balance, 'available_balance'),
-                'used' => $this->safe_float($balance, 'hold_balance'),
-                'total' => $this->safe_float($balance, 'balance'),
-            );
+            $account = $this->account();
+            $account['free'] = $this->safe_string($balance, 'available_balance');
+            $account['used'] = $this->safe_string($balance, 'hold_balance');
+            $account['total'] = $this->safe_string($balance, 'balance');
             $result[$code] = $account;
         }
         return $this->parse_balance($result);
@@ -302,19 +312,9 @@ class coinfalcon extends Exchange {
         $marketId = $this->safe_string($order, 'market');
         $symbol = $this->safe_symbol($marketId, $market, '-');
         $timestamp = $this->parse8601($this->safe_string($order, 'created_at'));
-        $price = $this->safe_float($order, 'price');
-        $amount = $this->safe_float($order, 'size');
-        $filled = $this->safe_float($order, 'size_filled');
-        $remaining = null;
-        $cost = null;
-        if ($amount !== null) {
-            if ($filled !== null) {
-                $remaining = max (0, $amount - $filled);
-            }
-            if ($price !== null) {
-                $cost = $filled * $price;
-            }
-        }
+        $price = $this->safe_number($order, 'price');
+        $amount = $this->safe_number($order, 'size');
+        $filled = $this->safe_number($order, 'size_filled');
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
         $type = $this->safe_string($order, 'operation_type');
         if ($type !== null) {
@@ -323,7 +323,7 @@ class coinfalcon extends Exchange {
         }
         $side = $this->safe_string($order, 'order_type');
         $postOnly = $this->safe_value($order, 'post_only');
-        return array(
+        return $this->safe_order(array(
             'id' => $this->safe_string($order, 'id'),
             'clientOrderId' => null,
             'datetime' => $this->iso8601($timestamp),
@@ -336,16 +336,16 @@ class coinfalcon extends Exchange {
             'side' => $side,
             'price' => $price,
             'stopPrice' => null,
-            'cost' => $cost,
+            'cost' => null,
             'amount' => $amount,
             'filled' => $filled,
-            'remaining' => $remaining,
+            'remaining' => null,
             'trades' => null,
             'fee' => null,
             'info' => $order,
             'lastTradeTimestamp' => null,
             'average' => null,
-        );
+        ));
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
@@ -404,6 +404,191 @@ class coinfalcon extends Exchange {
         $data = $this->safe_value($response, 'data', array());
         $orders = $this->filter_by_array($data, 'status', array( 'pending', 'open', 'partially_filled' ), false);
         return $this->parse_orders($orders, $market, $since, $limit);
+    }
+
+    public function fetch_deposits($code = null, $since = null, $limit = null, $params = array ()) {
+        yield $this->load_markets();
+        $request = array(
+            // $currency => 'xrp', // optional => $currency $code in lowercase
+            // status => 'completed', // optional => withdrawal status
+            // since_time // datetime in ISO8601 format (2017-11-06T09:53:08.383210Z)
+            // end_time // datetime in ISO8601 format (2017-11-06T09:53:08.383210Z)
+            // start_time // datetime in ISO8601 format (2017-11-06T09:53:08.383210Z)
+        );
+        $currency = null;
+        if ($code !== null) {
+            $currency = $this->currency($code);
+            $request['currency'] = strtolower($currency['id']);
+        }
+        if ($since !== null) {
+            $request['since_time'] = $this->iso8601($since);
+        }
+        $response = yield $this->privateGetAccountDeposits (array_merge($request, $params));
+        //
+        //     data => array(
+        //         array(
+        //             id => '6e2f18b5-f80e-xxx-xxx-xxx',
+        //             amount => '0.1',
+        //             status => 'completed',
+        //             currency_code => 'eth',
+        //             txid => '0xxxx',
+        //             address => '0xxxx',
+        //             tag => null,
+        //             type => 'deposit'
+        //         ),
+        //     )
+        //
+        $transactions = $this->safe_value($response, 'data', array());
+        $transactions->reverse (); // no timestamp but in reversed order
+        return $this->parse_transactions($transactions, $currency, null, $limit);
+    }
+
+    public function fetch_withdrawals($code = null, $since = null, $limit = null, $params = array ()) {
+        yield $this->load_markets();
+        $request = array(
+            // $currency => 'xrp', // optional => $currency $code in lowercase
+            // status => 'completed', // optional => withdrawal status
+            // since_time // datetime in ISO8601 format (2017-11-06T09:53:08.383210Z)
+            // end_time // datetime in ISO8601 format (2017-11-06T09:53:08.383210Z)
+            // start_time // datetime in ISO8601 format (2017-11-06T09:53:08.383210Z)
+        );
+        $currency = null;
+        if ($code !== null) {
+            $currency = $this->currency($code);
+            $request['currency'] = strtolower($currency['id']);
+        }
+        if ($since !== null) {
+            $request['since_time'] = $this->iso8601($since);
+        }
+        $response = yield $this->privateGetAccountWithdrawals (array_merge($request, $params));
+        //
+        //     data => array(
+        //         array(
+        //             id => '25f6f144-3666-xxx-xxx-xxx',
+        //             amount => '0.01',
+        //             status => 'completed',
+        //             fee => '0.0005',
+        //             currency_code => 'btc',
+        //             txid => '4xxx',
+        //             address => 'bc1xxx',
+        //             tag => null,
+        //             type => 'withdraw'
+        //         ),
+        //     )
+        //
+        $transactions = $this->safe_value($response, 'data', array());
+        $transactions->reverse (); // no timestamp but in reversed order
+        return $this->parse_transactions($transactions, $currency, null, $limit);
+    }
+
+    public function withdraw($code, $amount, $address, $tag = null, $params = array ()) {
+        list($tag, $params) = $this->handle_withdraw_tag_and_params($tag, $params);
+        $this->check_address($address);
+        yield $this->load_markets();
+        $currency = $this->currency($code);
+        $request = array(
+            'currency' => strtolower($currency['id']),
+            'address' => $address,
+            'amount' => $amount,
+            // 'tag' => 'string', // withdraw tag/memo
+        );
+        if ($tag !== null) {
+            $request['tag'] = $tag;
+        }
+        $response = yield $this->privatePostAccountWithdraw (array_merge($request, $params));
+        //
+        //     data => array(
+        //         array(
+        //             id => '25f6f144-3666-xxx-xxx-xxx',
+        //             $amount => '0.01',
+        //             status => 'approval_pending',
+        //             fee => '0.0005',
+        //             currency_code => 'btc',
+        //             txid => null,
+        //             $address => 'bc1xxx',
+        //             $tag => null,
+        //             type => 'withdraw'
+        //         ),
+        //     )
+        //
+        $transaction = $this->safe_value($response, 'data', array());
+        return $this->parse_transaction($transaction, $currency);
+    }
+
+    public function parse_transaction_status($status) {
+        $statuses = array(
+            'completed' => 'ok',
+            'denied' => 'failed',
+            'approval_pending' => 'pending',
+        );
+        return $this->safe_string($statuses, $status, $status);
+    }
+
+    public function parse_transaction($transaction, $currency = null) {
+        //
+        // fetchWithdrawals, withdraw
+        //
+        //     array(
+        //         $id => '25f6f144-3666-xxx-xxx-xxx',
+        //         $amount => '0.01',
+        //         $status => 'completed',
+        //         fee => '0.0005',
+        //         currency_code => 'btc',
+        //         $txid => '4xxx',
+        //         $address => 'bc1xxx',
+        //         $tag => null,
+        //         $type => 'withdraw'
+        //     ),
+        //
+        // fetchDeposits
+        //
+        //     array(
+        //         $id => '6e2f18b5-f80e-xxx-xxx-xxx',
+        //         $amount => '0.1',
+        //         $status => 'completed',
+        //         currency_code => 'eth',
+        //         $txid => '0xxxx',
+        //         $address => '0xxxx',
+        //         $tag => null,
+        //         $type => 'deposit'
+        //     ),
+        //
+        $id = $this->safe_string($transaction, 'id');
+        $address = $this->safe_string($transaction, 'address');
+        $tag = $this->safe_string($transaction, 'tag');
+        $txid = $this->safe_string($transaction, 'txid');
+        $currencyId = $this->safe_string($transaction, 'currency_code');
+        $code = $this->safe_currency_code($currencyId, $currency);
+        $type = $this->safe_string($transaction, 'type');
+        if ($type === 'withdraw') {
+            $type = 'withdrawal';
+        }
+        $status = $this->parse_transaction_status($this->safe_string($transaction, 'status'));
+        $amountString = $this->safe_string($transaction, 'amount');
+        $amount = $this->parse_number($amountString);
+        $feeCostString = $this->safe_string($transaction, 'fee');
+        $feeCost = 0;
+        if ($feeCostString !== null) {
+            $feeCost = $this->parse_number($feeCostString);
+        }
+        return array(
+            'info' => $transaction,
+            'id' => $id,
+            'txid' => $txid,
+            'timestamp' => null,
+            'datetime' => null,
+            'address' => $address,
+            'tag' => $tag,
+            'type' => $type,
+            'amount' => $amount,
+            'currency' => $code,
+            'status' => $status,
+            'updated' => null,
+            'fee' => array(
+                'currency' => $code,
+                'cost' => $feeCost,
+            ),
+        );
     }
 
     public function nonce() {

@@ -5,6 +5,7 @@
 const Exchange = require ('./base/Exchange');
 const { ExchangeError, ArgumentsRequired, BadRequest, OrderNotFound, InvalidOrder, InvalidNonce, InsufficientFunds, AuthenticationError, PermissionDenied, NotSupported, OnMaintenance, RateLimitExceeded, ExchangeNotAvailable } = require ('./base/errors');
 const { TICK_SIZE } = require ('./base/functions/number');
+const Precise = require ('./base/Precise');
 
 //  ---------------------------------------------------------------------------
 
@@ -18,27 +19,27 @@ module.exports = class gemini extends Exchange {
             'version': 'v1',
             'has': {
                 'cancelOrder': true,
-                'CORS': false,
+                'CORS': undefined,
                 'createDepositAddress': true,
-                'createMarketOrder': false,
+                'createMarketOrder': undefined,
                 'createOrder': true,
                 'fetchBalance': true,
-                'fetchBidsAsks': false,
-                'fetchClosedOrders': false,
-                'fetchDepositAddress': false,
-                'fetchDeposits': false,
+                'fetchBidsAsks': undefined,
+                'fetchClosedOrders': undefined,
+                'fetchDepositAddress': undefined,
+                'fetchDeposits': undefined,
                 'fetchMarkets': true,
                 'fetchMyTrades': true,
                 'fetchOHLCV': true,
                 'fetchOpenOrders': true,
                 'fetchOrder': true,
                 'fetchOrderBook': true,
-                'fetchOrders': false,
+                'fetchOrders': undefined,
                 'fetchTicker': true,
                 'fetchTickers': true,
                 'fetchTrades': true,
                 'fetchTransactions': true,
-                'fetchWithdrawals': false,
+                'fetchWithdrawals': undefined,
                 'withdraw': true,
             },
             'urls': {
@@ -89,6 +90,7 @@ module.exports = class gemini extends Exchange {
                 },
                 'private': {
                     'post': [
+                        'v1/account/list',
                         'v1/order/new',
                         'v1/order/cancel',
                         'v1/order/cancel/session',
@@ -221,16 +223,16 @@ module.exports = class gemini extends Exchange {
             // const base = this.safeCurrencyCode (baseId);
             const minAmountString = cells[1].replace ('<td>', '');
             const minAmountParts = minAmountString.split (' ');
-            const minAmount = this.safeFloat (minAmountParts, 0);
+            const minAmount = this.safeNumber (minAmountParts, 0);
             const amountPrecisionString = cells[2].replace ('<td>', '');
             const amountPrecisionParts = amountPrecisionString.split (' ');
-            const amountPrecision = this.safeFloat (amountPrecisionParts, 0);
+            const amountPrecision = this.safeNumber (amountPrecisionParts, 0);
             const idLength = marketId.length - 0;
             const quoteId = marketId.slice (idLength - 3, idLength);
             const quote = this.safeCurrencyCode (quoteId);
             const pricePrecisionString = cells[3].replace ('<td>', '');
             const pricePrecisionParts = pricePrecisionString.split (' ');
-            const pricePrecision = this.safeFloat (pricePrecisionParts, 0);
+            const pricePrecision = this.safeNumber (pricePrecisionParts, 0);
             const baseId = marketId.replace (quoteId, '');
             const base = this.safeCurrencyCode (baseId);
             const symbol = base + '/' + quote;
@@ -322,7 +324,7 @@ module.exports = class gemini extends Exchange {
             request['limit_asks'] = limit;
         }
         const response = await this.publicGetV1BookSymbol (this.extend (request, params));
-        return this.parseOrderBook (response, undefined, 'bids', 'asks', 'price', 'amount');
+        return this.parseOrderBook (response, symbol, undefined, 'bids', 'asks', 'price', 'amount');
     }
 
     async fetchTickerV1 (symbol, params = {}) {
@@ -458,60 +460,35 @@ module.exports = class gemini extends Exchange {
             base = market['base'];
             quote = market['quote'];
         }
-        const price = this.safeFloat (ticker, 'price');
-        const last = this.safeFloat2 (ticker, 'last', 'close', price);
-        let percentage = this.safeFloat (ticker, 'percentChange24h');
-        let change = undefined;
-        let open = this.safeFloat (ticker, 'open');
-        let average = undefined;
-        if (last !== undefined) {
-            if (open !== undefined) {
-                change = last - open;
-                if (open !== 0) {
-                    percentage = change / open * 100;
-                }
-                average = this.sum (last, open) / 2;
-            } else if (percentage !== undefined) {
-                change = last * percentage;
-                if (open === undefined) {
-                    open = last - change;
-                }
-                average = this.sum (last, open) / 2;
-            }
-        }
-        const baseVolume = this.safeFloat (volume, baseId);
-        const quoteVolume = this.safeFloat (volume, quoteId);
+        const price = this.safeNumber (ticker, 'price');
+        const last = this.safeNumber2 (ticker, 'last', 'close', price);
+        const percentage = this.safeNumber (ticker, 'percentChange24h');
+        const open = this.safeNumber (ticker, 'open');
+        const baseVolume = this.safeNumber (volume, baseId);
+        const quoteVolume = this.safeNumber (volume, quoteId);
         const vwap = this.vwap (baseVolume, quoteVolume);
-        return {
+        return this.safeTicker ({
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'high': this.safeFloat (ticker, 'high'),
-            'low': this.safeFloat (ticker, 'low'),
-            'bid': this.safeFloat (ticker, 'bid'),
+            'high': this.safeNumber (ticker, 'high'),
+            'low': this.safeNumber (ticker, 'low'),
+            'bid': this.safeNumber (ticker, 'bid'),
             'bidVolume': undefined,
-            'ask': this.safeFloat (ticker, 'ask'),
+            'ask': this.safeNumber (ticker, 'ask'),
             'askVolume': undefined,
             'vwap': vwap,
             'open': open,
             'close': last,
             'last': last,
             'previousClose': undefined, // previous day close
-            'change': change,
+            'change': undefined,
             'percentage': percentage,
-            'average': average,
+            'average': undefined,
             'baseVolume': baseVolume,
             'quoteVolume': quoteVolume,
             'info': ticker,
-        };
-    }
-
-    parseTickers (tickers, symbols = undefined) {
-        const result = [];
-        for (let i = 0; i < tickers.length; i++) {
-            result.push (this.parseTicker (tickers[i]));
-        }
-        return this.filterByArray (result, 'symbol', symbols);
+        }, market);
     }
 
     async fetchTickers (symbols = undefined, params = {}) {
@@ -554,17 +531,14 @@ module.exports = class gemini extends Exchange {
         const feeCurrencyId = this.safeString (trade, 'fee_currency');
         const feeCurrencyCode = this.safeCurrencyCode (feeCurrencyId);
         const fee = {
-            'cost': this.safeFloat (trade, 'fee_amount'),
+            'cost': this.safeNumber (trade, 'fee_amount'),
             'currency': feeCurrencyCode,
         };
-        const price = this.safeFloat (trade, 'price');
-        const amount = this.safeFloat (trade, 'amount');
-        let cost = undefined;
-        if (price !== undefined) {
-            if (amount !== undefined) {
-                cost = price * amount;
-            }
-        }
+        const priceString = this.safeString (trade, 'price');
+        const amountString = this.safeString (trade, 'amount');
+        const price = this.parseNumber (priceString);
+        const amount = this.parseNumber (amountString);
+        const cost = this.parseNumber (Precise.stringMul (priceString, amountString));
         const type = undefined;
         const side = this.safeStringLower (trade, 'type');
         const symbol = this.safeSymbol (undefined, market);
@@ -617,8 +591,8 @@ module.exports = class gemini extends Exchange {
             const currencyId = this.safeString (balance, 'currency');
             const code = this.safeCurrencyCode (currencyId);
             const account = this.account ();
-            account['free'] = this.safeFloat (balance, 'available');
-            account['total'] = this.safeFloat (balance, 'amount');
+            account['free'] = this.safeString (balance, 'available');
+            account['total'] = this.safeString (balance, 'amount');
             result[code] = account;
         }
         return this.parseBalance (result);
@@ -626,9 +600,9 @@ module.exports = class gemini extends Exchange {
 
     parseOrder (order, market = undefined) {
         const timestamp = this.safeInteger (order, 'timestampms');
-        const amount = this.safeFloat (order, 'original_amount');
-        const remaining = this.safeFloat (order, 'remaining_amount');
-        const filled = this.safeFloat (order, 'executed_amount');
+        const amount = this.safeNumber (order, 'original_amount');
+        const remaining = this.safeNumber (order, 'remaining_amount');
+        const filled = this.safeNumber (order, 'executed_amount');
         let status = 'closed';
         if (order['is_live']) {
             status = 'open';
@@ -636,14 +610,8 @@ module.exports = class gemini extends Exchange {
         if (order['is_cancelled']) {
             status = 'canceled';
         }
-        const price = this.safeFloat (order, 'price');
-        const average = this.safeFloat (order, 'avg_execution_price');
-        let cost = undefined;
-        if (filled !== undefined) {
-            if (average !== undefined) {
-                cost = filled * average;
-            }
-        }
+        const price = this.safeNumber (order, 'price');
+        const average = this.safeNumber (order, 'avg_execution_price');
         let type = this.safeString (order, 'type');
         if (type === 'exchange limit') {
             type = 'limit';
@@ -658,7 +626,7 @@ module.exports = class gemini extends Exchange {
         const id = this.safeString (order, 'order_id');
         const side = this.safeStringLower (order, 'side');
         const clientOrderId = this.safeString (order, 'client_order_id');
-        return {
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,
@@ -674,13 +642,13 @@ module.exports = class gemini extends Exchange {
             'price': price,
             'stopPrice': undefined,
             'average': average,
-            'cost': cost,
+            'cost': undefined,
             'amount': amount,
             'filled': filled,
             'remaining': remaining,
             'fee': fee,
             'trades': undefined,
-        };
+        });
     }
 
     async fetchOrder (id, symbol = undefined, params = {}) {
@@ -751,6 +719,7 @@ module.exports = class gemini extends Exchange {
     }
 
     async withdraw (code, amount, address, tag = undefined, params = {}) {
+        [ tag, params ] = this.handleWithdrawTagAndParams (tag, params);
         this.checkAddress (address);
         await this.loadMarkets ();
         const currency = this.currency (code);
@@ -795,7 +764,7 @@ module.exports = class gemini extends Exchange {
             status = 'ok';
         }
         let fee = undefined;
-        const feeAmount = this.safeFloat (transaction, 'feeAmount');
+        const feeAmount = this.safeNumber (transaction, 'feeAmount');
         if (feeAmount !== undefined) {
             fee = {
                 'cost': feeAmount,
@@ -811,7 +780,7 @@ module.exports = class gemini extends Exchange {
             'address': address,
             'tag': undefined, // or is it defined?
             'type': type, // direction of the transaction, ('deposit' | 'withdraw')
-            'amount': this.safeFloat (transaction, 'amount'),
+            'amount': this.safeNumber (transaction, 'amount'),
             'currency': code,
             'status': status,
             'updated': undefined,

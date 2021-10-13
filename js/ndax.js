@@ -5,6 +5,7 @@
 const Exchange = require ('./base/Exchange');
 const { ExchangeError, AuthenticationError, InsufficientFunds, BadSymbol, OrderNotFound } = require ('./base/errors');
 const { TICK_SIZE } = require ('./base/functions/number');
+const Precise = require ('./base/Precise');
 
 // ---------------------------------------------------------------------------
 
@@ -32,12 +33,14 @@ module.exports = class ndax extends Exchange {
                 'fetchMyTrades': true,
                 'fetchOHLCV': true,
                 'fetchOpenOrders': true,
-                'fetchOrders': true,
                 'fetchOrder': true,
                 'fetchOrderBook': true,
                 'fetchOrderTrades': true,
+                'fetchOrders': true,
                 'fetchTicker': true,
                 'fetchTrades': true,
+                'fetchWithdrawals': true,
+                'signIn': true,
             },
             'timeframes': {
                 '1m': '60',
@@ -188,6 +191,10 @@ module.exports = class ndax extends Exchange {
                 'apiKey': true,
                 'secret': true,
                 'uid': true,
+                // these credentials are required for signIn() and withdraw()
+                'login': true,
+                'password': true,
+                'twofa': true,
             },
             'precisionMode': TICK_SIZE,
             'exceptions': {
@@ -198,6 +205,7 @@ module.exports = class ndax extends Exchange {
                 },
                 'broad': {
                     'Invalid InstrumentId': BadSymbol, // {"result":false,"errormsg":"Invalid InstrumentId: 10000","errorcode":100,"detail":null}
+                    'This endpoint requires 2FACode along with the payload': AuthenticationError,
                 },
             },
             'options': {
@@ -213,6 +221,50 @@ module.exports = class ndax extends Exchange {
                 },
             },
         });
+    }
+
+    async signIn (params = {}) {
+        this.checkRequiredCredentials ();
+        if (this.login === undefined || this.password === undefined || this.twofa === undefined) {
+            throw new AuthenticationError (this.id + ' signIn() requires exchange.login, exchange.password and exchange.twofa credentials');
+        }
+        let request = {
+            'grant_type': 'client_credentials', // the only supported value
+        };
+        const response = await this.publicGetAuthenticate (this.extend (request, params));
+        //
+        //     {
+        //         "Authenticated":true,
+        //         "Requires2FA":true,
+        //         "AuthType":"Google",
+        //         "AddtlInfo":"",
+        //         "Pending2FaToken": "6f5c4e66-f3ee-493e-9227-31cc0583b55f"
+        //     }
+        //
+        let sessionToken = this.safeString (response, 'SessionToken');
+        if (sessionToken !== undefined) {
+            this.options['sessionToken'] = sessionToken;
+            return response;
+        }
+        const pending2faToken = this.safeString (response, 'Pending2FaToken');
+        if (pending2faToken !== undefined) {
+            this.options['pending2faToken'] = pending2faToken;
+            request = {
+                'Code': this.oath (),
+            };
+            const response = await this.publicGetAuthenticate2FA (this.extend (request, params));
+            //
+            //     {
+            //         "Authenticated": true,
+            //         "UserId":57765,
+            //         "SessionToken":"4a2a5857-c4e5-4fac-b09e-2c4c30b591a0"
+            //     }
+            //
+            sessionToken = this.safeString (response, 'SessionToken');
+            this.options['sessionToken'] = sessionToken;
+            return response;
+        }
+        return response;
     }
 
     async fetchCurrencies (params = {}) {
@@ -244,7 +296,7 @@ module.exports = class ndax extends Exchange {
             const name = this.safeString (currency, 'ProductFullName');
             const type = this.safeString (currency, 'ProductType');
             const code = this.safeCurrencyCode (this.safeString (currency, 'Product'));
-            const precision = this.safeFloat (currency, 'TickSize');
+            const precision = this.safeNumber (currency, 'TickSize');
             const isDisabled = this.safeValue (currency, 'IsDisabled');
             const active = !isDisabled;
             result[code] = {
@@ -325,8 +377,8 @@ module.exports = class ndax extends Exchange {
             const quote = this.safeCurrencyCode (this.safeString (market, 'Product2Symbol'));
             const symbol = base + '/' + quote;
             const precision = {
-                'amount': this.safeFloat (market, 'QuantityIncrement'),
-                'price': this.safeFloat (market, 'PriceIncrement'),
+                'amount': this.safeNumber (market, 'QuantityIncrement'),
+                'price': this.safeNumber (market, 'PriceIncrement'),
             };
             const sessionStatus = this.safeString (market, 'SessionStatus');
             const isDisable = this.safeValue (market, 'IsDisable');
@@ -344,11 +396,11 @@ module.exports = class ndax extends Exchange {
                 'precision': precision,
                 'limits': {
                     'amount': {
-                        'min': this.safeFloat (market, 'MinimumQuantity'),
+                        'min': this.safeNumber (market, 'MinimumQuantity'),
                         'max': undefined,
                     },
                     'price': {
-                        'min': this.safeFloat (market, 'MinimumPrice'),
+                        'min': this.safeNumber (market, 'MinimumPrice'),
                         'max': undefined,
                     },
                     'cost': {
@@ -361,9 +413,10 @@ module.exports = class ndax extends Exchange {
         return result;
     }
 
-    parseOrderBook (orderbook, timestamp = undefined, bidsKey = 'bids', asksKey = 'asks', priceKey = 6, amountKey = 8) {
+    parseOrderBook (orderbook, symbol, timestamp = undefined, bidsKey = 'bids', asksKey = 'asks', priceKey = 6, amountKey = 8) {
         let nonce = undefined;
         const result = {
+            'symbol': symbol,
             'bids': [],
             'asks': [],
             'timestamp': undefined,
@@ -385,7 +438,7 @@ module.exports = class ndax extends Exchange {
                 nonce = Math.max (nonce, newNonce);
             }
             const bidask = this.parseBidAsk (level, priceKey, amountKey);
-            const levelSide = this.safeValue (level, 9);
+            const levelSide = this.safeInteger (level, 9);
             const side = levelSide ? asksKey : bidsKey;
             result[side].push (bidask);
         }
@@ -430,7 +483,7 @@ module.exports = class ndax extends Exchange {
         //         [97244115,0,1607456142964,0,19069.32,1,19069.99,8,0.141604,1],
         //     ]
         //
-        return this.parseOrderBook (response);
+        return this.parseOrderBook (response, symbol);
     }
 
     parseTicker (ticker, market = undefined) {
@@ -469,27 +522,27 @@ module.exports = class ndax extends Exchange {
         const timestamp = this.safeInteger (ticker, 'TimeStamp');
         const marketId = this.safeString (ticker, 'InstrumentId');
         const symbol = this.safeSymbol (marketId, market);
-        const last = this.safeFloat (ticker, 'LastTradedPx');
-        const percentage = this.safeFloat (ticker, 'Rolling24HrPxChangePercent');
-        const change = this.safeFloat (ticker, 'Rolling24HrPxChange');
-        const open = this.safeFloat (ticker, 'SessionOpen');
+        const last = this.safeNumber (ticker, 'LastTradedPx');
+        const percentage = this.safeNumber (ticker, 'Rolling24HrPxChangePercent');
+        const change = this.safeNumber (ticker, 'Rolling24HrPxChange');
+        const open = this.safeNumber (ticker, 'SessionOpen');
         let average = undefined;
         if ((last !== undefined) && (change !== undefined)) {
             average = this.sum (last, open) / 2;
         }
-        const baseVolume = this.safeFloat (ticker, 'Rolling24HrVolume');
-        const quoteVolume = this.safeFloat (ticker, 'Rolling24HrNotional');
+        const baseVolume = this.safeNumber (ticker, 'Rolling24HrVolume');
+        const quoteVolume = this.safeNumber (ticker, 'Rolling24HrNotional');
         const vwap = this.vwap (baseVolume, quoteVolume);
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'high': this.safeFloat (ticker, 'SessionHigh'),
-            'low': this.safeFloat (ticker, 'SessionLow'),
-            'bid': this.safeFloat (ticker, 'BestBid'),
-            'bidVolume': undefined, // this.safeFloat (ticker, 'BidQty'), always shows 0
-            'ask': this.safeFloat (ticker, 'BestOffer'),
-            'askVolume': undefined, // this.safeFloat (ticker, 'AskQty'), always shows 0
+            'high': this.safeNumber (ticker, 'SessionHigh'),
+            'low': this.safeNumber (ticker, 'SessionLow'),
+            'bid': this.safeNumber (ticker, 'BestBid'),
+            'bidVolume': undefined, // this.safeNumber (ticker, 'BidQty'), always shows 0
+            'ask': this.safeNumber (ticker, 'BestOffer'),
+            'askVolume': undefined, // this.safeNumber (ticker, 'AskQty'), always shows 0
             'vwap': vwap,
             'open': open,
             'close': last,
@@ -562,11 +615,11 @@ module.exports = class ndax extends Exchange {
         //
         return [
             this.safeInteger (ohlcv, 0),
-            this.safeFloat (ohlcv, 3),
-            this.safeFloat (ohlcv, 1),
-            this.safeFloat (ohlcv, 2),
-            this.safeFloat (ohlcv, 4),
-            this.safeFloat (ohlcv, 5),
+            this.safeNumber (ohlcv, 3),
+            this.safeNumber (ohlcv, 1),
+            this.safeNumber (ohlcv, 2),
+            this.safeNumber (ohlcv, 4),
+            this.safeNumber (ohlcv, 5),
         ];
     }
 
@@ -583,15 +636,15 @@ module.exports = class ndax extends Exchange {
         const now = this.milliseconds ();
         if (since === undefined) {
             if (limit !== undefined) {
-                request['FromDate'] = this.ymd (now - duration * limit * 1000);
-                request['ToDate'] = this.ymd (now);
+                request['FromDate'] = this.ymdhms (now - duration * limit * 1000);
+                request['ToDate'] = this.ymdhms (now);
             }
         } else {
-            request['FromDate'] = this.ymd (since);
+            request['FromDate'] = this.ymdhms (since);
             if (limit === undefined) {
-                request['ToDate'] = this.ymd (now);
+                request['ToDate'] = this.ymdhms (now);
             } else {
-                request['ToDate'] = this.ymd (this.sum (since, duration * limit * 1000));
+                request['ToDate'] = this.ymdhms (this.sum (since, duration * limit * 1000));
             }
         }
         const response = await this.publicGetGetTickerHistory (this.extend (request, params));
@@ -709,13 +762,13 @@ module.exports = class ndax extends Exchange {
         //         "PegPriceType":"Unknown",
         //         "PegOffset":0.0000000000000000000000000000,
         //         "PegLimitOffset":0.0000000000000000000000000000,
-        //         "IpAddress":"5.228.233.138",
+        //         "IpAddress":"x.x.x.x",
         //         "ClientOrderIdUuid":null,
         //         "OMSId":1
         //     }
         //
-        let price = undefined;
-        let amount = undefined;
+        let priceString = undefined;
+        let amountString = undefined;
         let cost = undefined;
         let timestamp = undefined;
         let id = undefined;
@@ -726,14 +779,11 @@ module.exports = class ndax extends Exchange {
         let fee = undefined;
         let type = undefined;
         if (Array.isArray (trade)) {
-            price = this.safeFloat (trade, 3);
-            amount = this.safeFloat (trade, 2);
-            if ((price !== undefined) && (amount !== undefined)) {
-                cost = price * amount;
-            }
+            priceString = this.safeString (trade, 3);
+            amountString = this.safeString (trade, 2);
             timestamp = this.safeInteger (trade, 6);
             id = this.safeString (trade, 0);
-            marketId = this.safeInteger (trade, 1);
+            marketId = this.safeString (trade, 1);
             const takerSide = this.safeValue (trade, 8);
             side = takerSide ? 'sell' : 'buy';
             orderId = this.safeString (trade, 4);
@@ -742,13 +792,13 @@ module.exports = class ndax extends Exchange {
             id = this.safeString (trade, 'TradeId');
             orderId = this.safeString2 (trade, 'OrderId', 'OrigOrderId');
             marketId = this.safeString2 (trade, 'InstrumentId', 'Instrument');
-            price = this.safeFloat (trade, 'Price');
-            amount = this.safeFloat (trade, 'Quantity');
-            cost = this.safeFloat2 (trade, 'Value', 'GrossValueExecuted');
+            priceString = this.safeString (trade, 'Price');
+            amountString = this.safeString (trade, 'Quantity');
+            cost = this.safeNumber2 (trade, 'Value', 'GrossValueExecuted');
             takerOrMaker = this.safeStringLower (trade, 'MakerTaker');
             side = this.safeStringLower (trade, 'Side');
             type = this.safeStringLower (trade, 'OrderType');
-            const feeCost = this.safeFloat (trade, 'Fee');
+            const feeCost = this.safeNumber (trade, 'Fee');
             if (feeCost !== undefined) {
                 const feeCurrencyId = this.safeString (trade, 'FeeProductId');
                 const feeCurrencyCode = this.safeCurrencyCode (feeCurrencyId);
@@ -757,6 +807,11 @@ module.exports = class ndax extends Exchange {
                     'currency': feeCurrencyCode,
                 };
             }
+        }
+        const price = this.parseNumber (priceString);
+        const amount = this.parseNumber (amountString);
+        if (cost === undefined) {
+            cost = this.parseNumber (Precise.stringMul (priceString, amountString));
         }
         const symbol = this.safeSymbol (marketId, market);
         return {
@@ -799,12 +854,15 @@ module.exports = class ndax extends Exchange {
     }
 
     async fetchAccounts (params = {}) {
+        if (!this.login) {
+            throw new AuthenticationError (this.id + ' fetchAccounts() requires exchange.login email credential');
+        }
         const omsId = this.safeInteger (this.options, 'omsId', 1);
         this.checkRequiredCredentials ();
         const request = {
             'omsId': omsId,
             'UserId': this.uid,
-            'UserName': 'igor@ccxt.trade',
+            'UserName': this.login,
         };
         const response = await this.privateGetGetUserAccounts (this.extend (request, params));
         //
@@ -866,14 +924,18 @@ module.exports = class ndax extends Exchange {
         //         },
         //     ]
         //
-        const result = { 'info': response };
+        const result = {
+            'info': response,
+            'timestamp': undefined,
+            'datetime': undefined,
+        };
         for (let i = 0; i < response.length; i++) {
             const balance = response[i];
             const currencyId = this.safeString (balance, 'ProductId');
             const code = this.safeCurrencyCode (currencyId);
             const account = this.account ();
-            account['total'] = this.safeFloat (balance, 'Amount');
-            account['used'] = this.safeFloat (balance, 'Hold');
+            account['total'] = this.safeString (balance, 'Amount');
+            account['used'] = this.safeString (balance, 'Hold');
             result[code] = account;
         }
         return this.parseBalance (result);
@@ -922,8 +984,8 @@ module.exports = class ndax extends Exchange {
         const type = this.parseLedgerEntryType (this.safeString (item, 'ReferenceType'));
         const currencyId = this.safeString (item, 'ProductId');
         const code = this.safeCurrencyCode (currencyId, currency);
-        const credit = this.safeFloat (item, 'CR');
-        const debit = this.safeFloat (item, 'DR');
+        const credit = this.safeNumber (item, 'CR');
+        const debit = this.safeNumber (item, 'DR');
         let amount = undefined;
         let direction = undefined;
         if (credit > 0) {
@@ -935,7 +997,7 @@ module.exports = class ndax extends Exchange {
         }
         const timestamp = this.safeInteger (item, 'TimeStamp');
         let before = undefined;
-        const after = this.safeFloat (item, 'Balance');
+        const after = this.safeNumber (item, 'Balance');
         if (direction === 'out') {
             before = this.sum (after, amount);
         } else if (direction === 'in') {
@@ -1083,36 +1145,26 @@ module.exports = class ndax extends Exchange {
         //
         const id = this.safeString2 (order, 'ReplacementOrderId', 'OrderId');
         const timestamp = this.safeInteger (order, 'ReceiveTime');
-        let lastTradeTimestamp = undefined;
+        const lastTradeTimestamp = this.safeInteger (order, 'LastUpdatedTime');
         const marketId = this.safeString (order, 'Instrument');
         const symbol = this.safeSymbol (marketId, market);
         const side = this.safeStringLower (order, 'Side');
         const type = this.safeStringLower (order, 'OrderType');
         const clientOrderId = this.safeString2 (order, 'ReplacementClOrdId', 'ClientOrderId');
-        let price = this.safeFloat (order, 'Price', 0.0);
+        let price = this.safeNumber (order, 'Price', 0.0);
         price = (price > 0.0) ? price : undefined;
-        const amount = this.safeFloat (order, 'OrigQuantity');
-        const filled = this.safeFloat (order, 'QuantityExecuted');
-        const cost = this.safeFloat (order, 'GrossValueExecuted');
-        let remaining = undefined;
-        let average = undefined;
-        if (filled !== undefined) {
-            if (amount !== undefined) {
-                remaining = Math.max (0, amount - filled);
-            }
-            if (filled > 0) {
-                lastTradeTimestamp = this.safeInteger (order, 'LastUpdatedTime');
-                average = this.safeFloat (order, 'AvgPrice', 0.0);
-                average = (average > 0) ? average : undefined;
-            }
-        }
-        let stopPrice = this.safeFloat (order, 'StopPrice', 0.0);
+        const amount = this.safeNumber (order, 'OrigQuantity');
+        const filled = this.safeNumber (order, 'QuantityExecuted');
+        const cost = this.safeNumber (order, 'GrossValueExecuted');
+        let average = this.safeNumber (order, 'AvgPrice', 0.0);
+        average = (average > 0) ? average : undefined;
+        let stopPrice = this.safeNumber (order, 'StopPrice', 0.0);
         stopPrice = (stopPrice > 0.0) ? stopPrice : undefined;
         const timeInForce = undefined;
         const status = this.parseOrderStatus (this.safeString (order, 'OrderState'));
         const fee = undefined;
         const trades = undefined;
-        return {
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,
@@ -1131,10 +1183,10 @@ module.exports = class ndax extends Exchange {
             'amount': amount,
             'filled': filled,
             'average': average,
-            'remaining': remaining,
+            'remaining': undefined,
             'fee': fee,
             'trades': trades,
-        };
+        });
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
@@ -1257,7 +1309,7 @@ module.exports = class ndax extends Exchange {
             request['InstrumentId'] = market['id'];
         }
         if (since !== undefined) {
-            request['StartTimeStamp'] = since;
+            request['StartTimeStamp'] = parseInt (since / 1000);
         }
         if (limit !== undefined) {
             request['Depth'] = limit;
@@ -1461,7 +1513,7 @@ module.exports = class ndax extends Exchange {
             request['InstrumentId'] = market['id'];
         }
         if (since !== undefined) {
-            request['StartTimeStamp'] = since;
+            request['StartTimeStamp'] = parseInt (since / 1000);
         }
         if (limit !== undefined) {
             request['Depth'] = limit;
@@ -1511,7 +1563,7 @@ module.exports = class ndax extends Exchange {
         //             "PegPriceType":"Unknown",
         //             "PegOffset":0.0000000000000000000000000000,
         //             "PegLimitOffset":0.0000000000000000000000000000,
-        //             "IpAddress":"5.228.233.138",
+        //             "IpAddress":"x.x.x.x",
         //             "ClientOrderIdUuid":null,
         //             "OMSId":1
         //         },
@@ -1580,7 +1632,7 @@ module.exports = class ndax extends Exchange {
         //         "PegPriceType":"Unknown",
         //         "PegOffset":0.0000000000000000000000000000,
         //         "PegLimitOffset":0.0000000000000000000000000000,
-        //         "IpAddress":"5.228.233.138",
+        //         "IpAddress":"x.x.x.x",
         //         "ClientOrderIdUuid":null,
         //         "OMSId":1
         //     }
@@ -1602,7 +1654,7 @@ module.exports = class ndax extends Exchange {
         const request = {
             'OMSId': parseInt (omsId),
             // 'AccountId': accountId,
-            'OrderId': id,
+            'OrderId': parseInt (id),
         };
         const response = await this.privatePostGetOrderHistoryByOrderId (this.extend (request, params));
         //
@@ -1649,7 +1701,7 @@ module.exports = class ndax extends Exchange {
         //             "PegPriceType":"Unknown",
         //             "PegOffset":0.0000000000000000000000000000,
         //             "PegLimitOffset":0.0000000000000000000000000000,
-        //             "IpAddress":"5.228.233.138",
+        //             "IpAddress":"x.x.x.x",
         //             "ClientOrderIdUuid":null,
         //             "OMSId":1
         //         },
@@ -1932,8 +1984,8 @@ module.exports = class ndax extends Exchange {
         }
         const addressTo = address;
         const status = this.parseTransactionStatusByType (this.safeString (transaction, 'TicketStatus'), type);
-        const amount = this.safeFloat (transaction, 'Amount');
-        const feeCost = this.safeFloat (transaction, 'FeeAmount');
+        const amount = this.safeNumber (transaction, 'Amount');
+        const feeCost = this.safeNumber (transaction, 'FeeAmount');
         let fee = undefined;
         if (feeCost !== undefined) {
             fee = { 'currency': code, 'cost': feeCost };
@@ -1959,28 +2011,137 @@ module.exports = class ndax extends Exchange {
         };
     }
 
+    async withdraw (code, amount, address, tag = undefined, params = {}) {
+        [ tag, params ] = this.handleWithdrawTagAndParams (tag, params);
+        // this method required login, password and twofa key
+        const sessionToken = this.safeString (this.options, 'sessionToken');
+        if (sessionToken === undefined) {
+            throw new AuthenticationError (this.id + ' call signIn() method to obtain a session token');
+        }
+        this.checkAddress (address);
+        const omsId = this.safeInteger (this.options, 'omsId', 1);
+        await this.loadMarkets ();
+        await this.loadAccounts ();
+        const defaultAccountId = this.safeInteger2 (this.options, 'accountId', 'AccountId', parseInt (this.accounts[0]['id']));
+        const accountId = this.safeInteger2 (params, 'accountId', 'AccountId', defaultAccountId);
+        params = this.omit (params, [ 'accountId', 'AccountId' ]);
+        const currency = this.currency (code);
+        const withdrawTemplateTypesRequest = {
+            'omsId': omsId,
+            'AccountId': accountId,
+            'ProductId': currency['id'],
+        };
+        const withdrawTemplateTypesResponse = await this.privateGetGetWithdrawTemplateTypes (withdrawTemplateTypesRequest);
+        //
+        //     {
+        //         result: true,
+        //         errormsg: null,
+        //         statuscode: "0",
+        //         TemplateTypes: [
+        //             { AccountProviderId: "14", TemplateName: "ToExternalBitcoinAddress", AccountProviderName: "BitgoRPC-BTC" },
+        //             { AccountProviderId: "20", TemplateName: "ToExternalBitcoinAddress", AccountProviderName: "TrezorBTC" },
+        //             { AccountProviderId: "31", TemplateName: "BTC", AccountProviderName: "BTC Fireblocks 1" }
+        //         ]
+        //     }
+        //
+        const templateTypes = this.safeValue (withdrawTemplateTypesResponse, 'TemplateTypes', []);
+        const firstTemplateType = this.safeValue (templateTypes, 0);
+        if (firstTemplateType === undefined) {
+            throw new ExchangeError (this.id + ' withdraw() could not find a withdraw template type for ' + currency['code']);
+        }
+        const templateName = this.safeString (firstTemplateType, 'TemplateName');
+        const withdrawTemplateRequest = {
+            'omsId': omsId,
+            'AccountId': accountId,
+            'ProductId': currency['id'],
+            'TemplateType': templateName,
+            'AccountProviderId': firstTemplateType['AccountProviderId'],
+        };
+        const withdrawTemplateResponse = await this.privateGetGetWithdrawTemplate (withdrawTemplateRequest);
+        //
+        //     {
+        //         result: true,
+        //         errormsg: null,
+        //         statuscode: "0",
+        //         Template: "{\"TemplateType\":\"ToExternalBitcoinAddress\",\"Comment\":\"\",\"ExternalAddress\":\"\"}"
+        //     }
+        //
+        const template = this.safeString (withdrawTemplateResponse, 'Template');
+        if (template === undefined) {
+            throw new ExchangeError (this.id + ' withdraw() could not find a withdraw template for ' + currency['code']);
+        }
+        const withdrawTemplate = JSON.parse (template);
+        withdrawTemplate['ExternalAddress'] = address;
+        if (tag !== undefined) {
+            if ('Memo' in withdrawTemplate) {
+                withdrawTemplate['Memo'] = tag;
+            }
+        }
+        const withdrawPayload = {
+            'omsId': omsId,
+            'AccountId': accountId,
+            'ProductId': currency['id'],
+            'TemplateForm': this.json (withdrawTemplate),
+            'TemplateType': templateName,
+        };
+        const withdrawRequest = {
+            'TfaType': 'Google',
+            'TFaCode': this.oath (),
+            'Payload': this.json (withdrawPayload),
+        };
+        const response = await this.privatePostCreateWithdrawTicket (this.deepExtend (withdrawRequest, params));
+        return {
+            'info': response,
+            'id': this.safeString (response, 'Id'),
+        };
+    }
+
     nonce () {
         return this.milliseconds ();
     }
 
     sign (path, api = 'public', method = 'GET', params = {}, headers = undefined, body = undefined) {
         let url = this.urls['api'][api] + '/' + this.implodeParams (path, params);
-        const query = this.omit (params, this.extractParams (path));
+        let query = this.omit (params, this.extractParams (path));
         if (api === 'public') {
+            if (path === 'Authenticate') {
+                const auth = this.login + ':' + this.password;
+                const auth64 = this.stringToBase64 (auth);
+                headers = {
+                    'Authorization': 'Basic ' + this.decode (auth64),
+                    // 'Content-Type': 'application/json',
+                };
+            } else if (path === 'Authenticate2FA') {
+                const pending2faToken = this.safeString (this.options, 'pending2faToken');
+                if (pending2faToken !== undefined) {
+                    headers = {
+                        'Pending2FaToken': pending2faToken,
+                        // 'Content-Type': 'application/json',
+                    };
+                    query = this.omit (query, 'pending2faToken');
+                }
+            }
             if (Object.keys (query).length) {
                 url += '?' + this.urlencode (query);
             }
         } else if (api === 'private') {
             this.checkRequiredCredentials ();
-            const nonce = this.nonce ().toString ();
-            const auth = nonce + this.uid + this.apiKey;
-            const signature = this.hmac (this.encode (auth), this.encode (this.secret));
-            headers = {
-                'Nonce': nonce,
-                'APIKey': this.apiKey,
-                'Signature': signature,
-                'UserId': this.uid,
-            };
+            const sessionToken = this.safeString (this.options, 'sessionToken');
+            if (sessionToken === undefined) {
+                const nonce = this.nonce ().toString ();
+                const auth = nonce + this.uid + this.apiKey;
+                const signature = this.hmac (this.encode (auth), this.encode (this.secret));
+                headers = {
+                    'Nonce': nonce,
+                    'APIKey': this.apiKey,
+                    'Signature': signature,
+                    'UserId': this.uid,
+                };
+            } else {
+                headers = {
+                    'APToken': sessionToken,
+                };
+            }
             if (method === 'POST') {
                 headers['Content-Type'] = 'application/json';
                 body = this.json (query);

@@ -5,6 +5,7 @@
 const Exchange = require ('./base/Exchange');
 const { TICK_SIZE } = require ('./base/functions/number');
 const { AuthenticationError, ExchangeError, ArgumentsRequired, PermissionDenied, InvalidOrder, OrderNotFound, DDoSProtection, NotSupported, ExchangeNotAvailable, InsufficientFunds, BadRequest, InvalidAddress, OnMaintenance } = require ('./base/errors');
+const Precise = require ('./base/Precise');
 
 //  ---------------------------------------------------------------------------
 
@@ -28,20 +29,23 @@ module.exports = class deribit extends Exchange {
                 'fetchClosedOrders': true,
                 'fetchDepositAddress': true,
                 'fetchDeposits': true,
+                'fetchIndexOHLCV': false,
                 'fetchMarkets': true,
+                'fetchMarkOHLCV': false,
                 'fetchMyTrades': true,
                 'fetchOHLCV': true,
                 'fetchOpenOrders': true,
                 'fetchOrder': true,
                 'fetchOrderBook': true,
-                'fetchOrders': false,
+                'fetchOrders': undefined,
                 'fetchOrderTrades': true,
+                'fetchPremiumIndexOHLCV': false,
                 'fetchStatus': true,
                 'fetchTicker': true,
                 'fetchTickers': true,
                 'fetchTime': true,
                 'fetchTrades': true,
-                'fetchTransactions': false,
+                'fetchTransactions': undefined,
                 'fetchWithdrawals': true,
                 'withdraw': true,
             },
@@ -69,7 +73,10 @@ module.exports = class deribit extends Exchange {
                     'https://github.com/deribit',
                 ],
                 'fees': 'https://www.deribit.com/pages/information/fees',
-                'referral': 'https://www.deribit.com/reg-1189.4038',
+                'referral': {
+                    'url': 'https://www.deribit.com/reg-1189.4038',
+                    'discount': 0.1,
+                },
             },
             'api': {
                 'public': {
@@ -100,6 +107,8 @@ module.exports = class deribit extends Exchange {
                         'get_funding_rate_value',
                         'get_historical_volatility',
                         'get_index',
+                        'get_index_price',
+                        'get_index_price_names',
                         'get_instruments',
                         'get_last_settlements_by_currency',
                         'get_last_settlements_by_instrument',
@@ -333,10 +342,11 @@ module.exports = class deribit extends Exchange {
         return this.safeInteger (response, 'result');
     }
 
-    codeFromOptions (methodName) {
+    codeFromOptions (methodName, params = {}) {
         const defaultCode = this.safeValue (this.options, 'code', 'BTC');
         const options = this.safeValue (this.options, methodName, {});
-        return this.safeValue (options, 'code', defaultCode);
+        const code = this.safeValue (options, 'code', defaultCode);
+        return this.safeValue (params, 'code', code);
     }
 
     async fetchStatus (params = {}) {
@@ -435,8 +445,8 @@ module.exports = class deribit extends Exchange {
                 const future = (type === 'future');
                 const option = (type === 'option');
                 const active = this.safeValue (market, 'is_active');
-                const minTradeAmount = this.safeFloat (market, 'min_trade_amount');
-                const tickSize = this.safeFloat (market, 'tick_size');
+                const minTradeAmount = this.safeNumber (market, 'min_trade_amount');
+                const tickSize = this.safeNumber (market, 'tick_size');
                 const precision = {
                     'amount': minTradeAmount,
                     'price': tickSize,
@@ -448,8 +458,8 @@ module.exports = class deribit extends Exchange {
                     'quote': quote,
                     'active': active,
                     'precision': precision,
-                    'taker': this.safeFloat (market, 'taker_commission'),
-                    'maker': this.safeFloat (market, 'maker_commission'),
+                    'taker': this.safeNumber (market, 'taker_commission'),
+                    'maker': this.safeNumber (market, 'maker_commission'),
                     'limits': {
                         'amount': {
                             'min': minTradeAmount,
@@ -477,7 +487,7 @@ module.exports = class deribit extends Exchange {
 
     async fetchBalance (params = {}) {
         await this.loadMarkets ();
-        const code = this.codeFromOptions ('fetchBalance');
+        const code = this.codeFromOptions ('fetchBalance', params);
         const currency = this.currency (code);
         const request = {
             'currency': currency['id'],
@@ -532,9 +542,9 @@ module.exports = class deribit extends Exchange {
         const currencyId = this.safeString (balance, 'currency');
         const currencyCode = this.safeCurrencyCode (currencyId);
         const account = this.account ();
-        account['free'] = this.safeFloat (balance, 'availableFunds');
-        account['used'] = this.safeFloat (balance, 'maintenanceMargin');
-        account['total'] = this.safeFloat (balance, 'equity');
+        account['free'] = this.safeString (balance, 'available_funds');
+        account['used'] = this.safeString (balance, 'maintenance_margin');
+        account['total'] = this.safeString (balance, 'equity');
         result[currencyCode] = account;
         return this.parseBalance (result);
     }
@@ -654,18 +664,18 @@ module.exports = class deribit extends Exchange {
         const timestamp = this.safeInteger2 (ticker, 'timestamp', 'creation_timestamp');
         const marketId = this.safeString (ticker, 'instrument_name');
         const symbol = this.safeSymbol (marketId, market);
-        const last = this.safeFloat2 (ticker, 'last_price', 'last');
+        const last = this.safeNumber2 (ticker, 'last_price', 'last');
         const stats = this.safeValue (ticker, 'stats', ticker);
         return {
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'high': this.safeFloat2 (stats, 'high', 'max_price'),
-            'low': this.safeFloat2 (stats, 'low', 'min_price'),
-            'bid': this.safeFloat2 (ticker, 'best_bid_price', 'bid_price'),
-            'bidVolume': this.safeFloat (ticker, 'best_bid_amount'),
-            'ask': this.safeFloat2 (ticker, 'best_ask_price', 'ask_price'),
-            'askVolume': this.safeFloat (ticker, 'best_ask_amount'),
+            'high': this.safeNumber2 (stats, 'high', 'max_price'),
+            'low': this.safeNumber2 (stats, 'low', 'min_price'),
+            'bid': this.safeNumber2 (ticker, 'best_bid_price', 'bid_price'),
+            'bidVolume': this.safeNumber (ticker, 'best_bid_amount'),
+            'ask': this.safeNumber2 (ticker, 'best_ask_price', 'ask_price'),
+            'askVolume': this.safeNumber (ticker, 'best_ask_amount'),
             'vwap': undefined,
             'open': undefined,
             'close': last,
@@ -675,7 +685,7 @@ module.exports = class deribit extends Exchange {
             'percentage': undefined,
             'average': undefined,
             'baseVolume': undefined,
-            'quoteVolume': this.safeFloat (stats, 'volume'),
+            'quoteVolume': this.safeNumber (stats, 'volume'),
             'info': ticker,
         };
     }
@@ -721,7 +731,7 @@ module.exports = class deribit extends Exchange {
 
     async fetchTickers (symbols = undefined, params = {}) {
         await this.loadMarkets ();
-        const code = this.codeFromOptions ('fetchTickers');
+        const code = this.codeFromOptions ('fetchTickers', params);
         const currency = this.currency (code);
         const request = {
             'currency': currency['id'],
@@ -862,21 +872,18 @@ module.exports = class deribit extends Exchange {
         const symbol = this.safeSymbol (marketId, market);
         const timestamp = this.safeInteger (trade, 'timestamp');
         const side = this.safeString (trade, 'direction');
-        const price = this.safeFloat (trade, 'price');
-        const amount = this.safeFloat (trade, 'amount');
-        let cost = undefined;
-        if (amount !== undefined) {
-            if (price !== undefined) {
-                cost = amount * price;
-            }
-        }
+        const priceString = this.safeString (trade, 'price');
+        const amountString = this.safeString (trade, 'amount');
+        const price = this.parseNumber (priceString);
+        const amount = this.parseNumber (amountString);
+        const cost = this.parseNumber (Precise.stringMul (priceString, amountString));
         const liquidity = this.safeString (trade, 'liquidity');
         let takerOrMaker = undefined;
         if (liquidity !== undefined) {
             // M = maker, T = taker, MT = both
             takerOrMaker = (liquidity === 'M') ? 'maker' : 'taker';
         }
-        const feeCost = this.safeFloat (trade, 'fee');
+        const feeCost = this.safeNumber (trade, 'fee');
         let fee = undefined;
         if (feeCost !== undefined) {
             const feeCurrencyId = this.safeString (trade, 'fee_currency');
@@ -1000,7 +1007,7 @@ module.exports = class deribit extends Exchange {
         const result = this.safeValue (response, 'result', {});
         const timestamp = this.safeInteger (result, 'timestamp');
         const nonce = this.safeInteger (result, 'change_id');
-        const orderbook = this.parseOrderBook (result, timestamp);
+        const orderbook = this.parseOrderBook (result, symbol, timestamp);
         orderbook['nonce'] = nonce;
         return orderbook;
     }
@@ -1056,31 +1063,21 @@ module.exports = class deribit extends Exchange {
         const timestamp = this.safeInteger (order, 'creation_timestamp');
         const lastUpdate = this.safeInteger (order, 'last_update_timestamp');
         const id = this.safeString (order, 'order_id');
-        const price = this.safeFloat (order, 'price');
-        const average = this.safeFloat (order, 'average_price');
-        const amount = this.safeFloat (order, 'amount');
-        const filled = this.safeFloat (order, 'filled_amount');
+        const price = this.safeNumber (order, 'price');
+        const average = this.safeNumber (order, 'average_price');
+        const amount = this.safeNumber (order, 'amount');
+        const filled = this.safeNumber (order, 'filled_amount');
         let lastTradeTimestamp = undefined;
         if (filled !== undefined) {
             if (filled > 0) {
                 lastTradeTimestamp = lastUpdate;
             }
         }
-        let remaining = undefined;
-        let cost = undefined;
-        if (filled !== undefined) {
-            if (amount !== undefined) {
-                remaining = amount - filled;
-            }
-            if (price !== undefined) {
-                cost = price * filled;
-            }
-        }
         const status = this.parseOrderStatus (this.safeString (order, 'order_state'));
         const marketId = this.safeString (order, 'instrument_name');
         market = this.safeMarket (marketId, market);
         const side = this.safeStringLower (order, 'direction');
-        let feeCost = this.safeFloat (order, 'commission');
+        let feeCost = this.safeNumber (order, 'commission');
         let fee = undefined;
         if (feeCost !== undefined) {
             feeCost = Math.abs (feeCost);
@@ -1098,7 +1095,7 @@ module.exports = class deribit extends Exchange {
         const timeInForce = this.parseTimeInForce (this.safeString (order, 'time_in_force'));
         const stopPrice = this.safeValue (order, 'stop_price');
         const postOnly = this.safeValue (order, 'post_only');
-        return {
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': undefined,
@@ -1113,14 +1110,14 @@ module.exports = class deribit extends Exchange {
             'price': price,
             'stopPrice': stopPrice,
             'amount': amount,
-            'cost': cost,
+            'cost': undefined,
             'average': average,
             'filled': filled,
-            'remaining': remaining,
+            'remaining': undefined,
             'status': status,
             'fee': fee,
             'trades': trades,
-        };
+        });
     }
 
     async fetchOrder (id, symbol = undefined, params = {}) {
@@ -1197,7 +1194,7 @@ module.exports = class deribit extends Exchange {
             }
         }
         if (stopPriceIsRequired) {
-            const stopPrice = this.safeFloat2 (params, 'stop_price', 'stopPrice');
+            const stopPrice = this.safeNumber2 (params, 'stop_price', 'stopPrice');
             if (stopPrice === undefined) {
                 throw new ArgumentsRequired (this.id + ' createOrder() requires a stop_price or stopPrice param for a ' + type + ' order');
             } else {
@@ -1325,7 +1322,7 @@ module.exports = class deribit extends Exchange {
         let market = undefined;
         let method = undefined;
         if (symbol === undefined) {
-            const code = this.codeFromOptions ('fetchOpenOrders');
+            const code = this.codeFromOptions ('fetchOpenOrders', params);
             const currency = this.currency (code);
             request['currency'] = currency['id'];
             method = 'privateGetGetOpenOrdersByCurrency';
@@ -1345,7 +1342,7 @@ module.exports = class deribit extends Exchange {
         let market = undefined;
         let method = undefined;
         if (symbol === undefined) {
-            const code = this.codeFromOptions ('fetchClosedOrders');
+            const code = this.codeFromOptions ('fetchClosedOrders', params);
             const currency = this.currency (code);
             request['currency'] = currency['id'];
             method = 'privateGetGetOrderHistoryByCurrency';
@@ -1411,7 +1408,7 @@ module.exports = class deribit extends Exchange {
         let market = undefined;
         let method = undefined;
         if (symbol === undefined) {
-            const code = this.codeFromOptions ('fetchMyTrades');
+            const code = this.codeFromOptions ('fetchMyTrades', params);
             const currency = this.currency (code);
             request['currency'] = currency['id'];
             if (since === undefined) {
@@ -1596,7 +1593,7 @@ module.exports = class deribit extends Exchange {
         const updated = this.safeInteger (transaction, 'updated_timestamp');
         const status = this.parseTransactionStatus (this.safeString (transaction, 'state'));
         const address = this.safeString (transaction, 'address');
-        const feeCost = this.safeFloat (transaction, 'fee');
+        const feeCost = this.safeNumber (transaction, 'fee');
         let type = 'deposit';
         let fee = undefined;
         if (feeCost !== undefined) {
@@ -1619,7 +1616,7 @@ module.exports = class deribit extends Exchange {
             'tagTo': undefined,
             'tagFrom': undefined,
             'type': type,
-            'amount': this.safeFloat (transaction, 'amount'),
+            'amount': this.safeNumber (transaction, 'amount'),
             'currency': code,
             'status': status,
             'updated': updated,
@@ -1665,9 +1662,9 @@ module.exports = class deribit extends Exchange {
         return result;
     }
 
-    async fetchPositions (symbols = undefined, since = undefined, limit = undefined, params = {}) {
+    async fetchPositions (symbols = undefined, params = {}) {
         await this.loadMarkets ();
-        const code = this.codeFromOptions ('fetchPositions');
+        const code = this.codeFromOptions ('fetchPositions', params);
         const currency = this.currency (code);
         const request = {
             'currency': currency['id'],
@@ -1708,6 +1705,7 @@ module.exports = class deribit extends Exchange {
     }
 
     async withdraw (code, amount, address, tag = undefined, params = {}) {
+        [ tag, params ] = this.handleWithdrawTagAndParams (tag, params);
         this.checkAddress (address);
         await this.loadMarkets ();
         const currency = this.currency (code);

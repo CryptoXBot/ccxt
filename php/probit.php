@@ -22,26 +22,26 @@ class probit extends Exchange {
             'countries' => array( 'SC', 'KR' ), // Seychelles, South Korea
             'rateLimit' => 250, // ms
             'has' => array(
-                'CORS' => true,
-                'fetchTime' => true,
-                'fetchMarkets' => true,
-                'fetchCurrencies' => true,
-                'fetchTickers' => true,
-                'fetchTicker' => true,
-                'fetchOHLCV' => true,
-                'fetchOrderBook' => true,
-                'fetchTrades' => true,
-                'fetchBalance' => true,
-                'createOrder' => true,
-                'createMarketOrder' => true,
                 'cancelOrder' => true,
-                'fetchOrder' => true,
-                'fetchOpenOrders' => true,
+                'CORS' => true,
+                'createMarketOrder' => true,
+                'createOrder' => true,
+                'fetchBalance' => true,
                 'fetchClosedOrders' => true,
-                'fetchMyTrades' => true,
+                'fetchCurrencies' => true,
                 'fetchDepositAddress' => true,
-                'withdraw' => true,
+                'fetchMarkets' => true,
+                'fetchMyTrades' => true,
+                'fetchOHLCV' => true,
+                'fetchOpenOrders' => true,
+                'fetchOrder' => true,
+                'fetchOrderBook' => true,
+                'fetchTicker' => true,
+                'fetchTickers' => true,
+                'fetchTime' => true,
+                'fetchTrades' => true,
                 'signIn' => true,
+                'withdraw' => true,
             ),
             'timeframes' => array(
                 '1m' => '1m',
@@ -112,8 +112,8 @@ class probit extends Exchange {
                 'trading' => array(
                     'tierBased' => false,
                     'percentage' => true,
-                    'maker' => 0.2 / 100,
-                    'taker' => 0.2 / 100,
+                    'maker' => $this->parse_number('0.002'),
+                    'taker' => $this->parse_number('0.002'),
                 ),
             ),
             'exceptions' => array(
@@ -128,9 +128,11 @@ class probit extends Exchange {
                     'MARKET_UNAVAILABLE' => '\\ccxt\\ExchangeNotAvailable', // Market is closed today
                     'INVALID_MARKET' => '\\ccxt\\BadSymbol', // Requested market is not exist
                     'MARKET_CLOSED' => '\\ccxt\\BadSymbol', // array("errorCode":"MARKET_CLOSED")
+                    'MARKET_NOT_FOUND' => '\\ccxt\\BadSymbol', // array("errorCode":"MARKET_NOT_FOUND","message":"8e2b8496-0a1e-5beb-b990-a205b902eabe","details":array())
                     'INVALID_CURRENCY' => '\\ccxt\\BadRequest', // Requested currency is not exist on ProBit system
                     'TOO_MANY_OPEN_ORDERS' => '\\ccxt\\DDoSProtection', // Too many open orders
                     'DUPLICATE_ADDRESS' => '\\ccxt\\InvalidAddress', // Address already exists in withdrawal address list
+                    'invalid_grant' => '\\ccxt\\AuthenticationError', // array("error":"invalid_grant")
                 ),
             ),
             'requiredCredentials' => array(
@@ -144,13 +146,31 @@ class probit extends Exchange {
                     'limit' => 'gtc',
                     'market' => 'ioc',
                 ),
+                'networks' => array(
+                    'BEP20' => 'BSC',
+                    'ERC20' => 'ETH',
+                    'TRC20' => 'TRON',
+                    'TRX' => 'TRON',
+                ),
             ),
             'commonCurrencies' => array(
+                'AUTO' => 'Cube',
+                'BCC' => 'BCC',
+                'BDP' => 'BidiPass',
                 'BTCBEAR' => 'BEAR',
                 'BTCBULL' => 'BULL',
                 'CBC' => 'CryptoBharatCoin',
+                'EPS' => 'Epanus',  // conflict with EPS Ellipsis https://github.com/ccxt/ccxt/issues/8909
+                'GOGOL' => 'GOL',
+                'GOL' => 'Goldofir',
+                'GRB' => 'Global Reward Bank',
                 'HBC' => 'Hybrid Bank Cash',
+                'ORC' => 'Oracle System',
+                'SOC' => 'Soda Coin',
+                'TCT' => 'Top Coin Token',
+                'TPAY' => 'Tetra Pay',
                 'UNI' => 'UNICORN Token',
+                'UNISWAP' => 'UNI',
             ),
         ));
     }
@@ -193,15 +213,19 @@ class probit extends Exchange {
             $symbol = $base . '/' . $quote;
             $closed = $this->safe_value($market, 'closed', false);
             $active = !$closed;
-            $amountPrecision = $this->safe_integer($market, 'quantity_precision');
-            $costPrecision = $this->safe_integer($market, 'cost_precision');
+            $amountPrecision = $this->safe_string($market, 'quantity_precision');
+            $costPrecision = $this->safe_string($market, 'cost_precision');
+            $amountTickSize = $this->parse_precision($amountPrecision);
+            $costTickSize = $this->parse_precision($costPrecision);
             $precision = array(
-                'amount' => 1 / pow(10, $amountPrecision),
-                'price' => $this->safe_float($market, 'price_increment'),
-                'cost' => 1 / pow(10, $costPrecision),
+                'amount' => $this->parse_number($amountTickSize),
+                'price' => $this->safe_number($market, 'price_increment'),
+                'cost' => $this->parse_number($costTickSize),
             );
-            $takerFeeRate = $this->safe_float($market, 'taker_fee_rate');
-            $makerFeeRate = $this->safe_float($market, 'maker_fee_rate');
+            $takerFeeRate = $this->safe_string($market, 'taker_fee_rate');
+            $taker = Precise::string_div($takerFeeRate, '100');
+            $makerFeeRate = $this->safe_string($market, 'maker_fee_rate');
+            $maker = Precise::string_div($makerFeeRate, '100');
             $result[] = array(
                 'id' => $id,
                 'info' => $market,
@@ -212,20 +236,20 @@ class probit extends Exchange {
                 'quoteId' => $quoteId,
                 'active' => $active,
                 'precision' => $precision,
-                'taker' => $takerFeeRate / 100,
-                'maker' => $makerFeeRate / 100,
+                'taker' => $this->parse_number($taker),
+                'maker' => $this->parse_number($maker),
                 'limits' => array(
                     'amount' => array(
-                        'min' => $this->safe_float($market, 'min_quantity'),
-                        'max' => $this->safe_float($market, 'max_quantity'),
+                        'min' => $this->safe_number($market, 'min_quantity'),
+                        'max' => $this->safe_number($market, 'max_quantity'),
                     ),
                     'price' => array(
-                        'min' => $this->safe_float($market, 'min_price'),
-                        'max' => $this->safe_float($market, 'max_price'),
+                        'min' => $this->safe_number($market, 'min_price'),
+                        'max' => $this->safe_number($market, 'max_price'),
                     ),
                     'cost' => array(
-                        'min' => $this->safe_float($market, 'min_cost'),
-                        'max' => $this->safe_float($market, 'max_cost'),
+                        'min' => $this->safe_number($market, 'min_cost'),
+                        'max' => $this->safe_number($market, 'max_cost'),
                     ),
                 ),
             );
@@ -245,7 +269,7 @@ class probit extends Exchange {
         //                 "$platform":[
         //                     array(
         //                         "$id":"ETH",
-        //                         "priority":1,
+        //                         "$priority":1,
         //                         "deposit":true,
         //                         "withdrawal":true,
         //                         "currency_id":"USDT",
@@ -256,8 +280,8 @@ class probit extends Exchange {
         //                         "min_deposit_amount":"0",
         //                         "min_withdrawal_amount":"1",
         //                         "withdrawal_fee":[
-        //                             array("amount":"0.01","priority":2,"currency_id":"ETH"),
-        //                             array("amount":"1.5","priority":1,"currency_id":"USDT"),
+        //                             array("$amount":"0.01","$priority":2,"currency_id":"ETH"),
+        //                             array("$amount":"1.5","$priority":1,"currency_id":"USDT"),
         //                         ),
         //                         "deposit_fee":array(),
         //                         "suspended_reason":"",
@@ -266,7 +290,7 @@ class probit extends Exchange {
         //                     ),
         //                     {
         //                         "$id":"OMNI",
-        //                         "priority":2,
+        //                         "$priority":2,
         //                         "deposit":true,
         //                         "withdrawal":true,
         //                         "currency_id":"USDT",
@@ -276,7 +300,7 @@ class probit extends Exchange {
         //                         "display_name":array("$name":array("ko-kr":"OMNI","en-us":"OMNI")),
         //                         "min_deposit_amount":"0",
         //                         "min_withdrawal_amount":"5",
-        //                         "withdrawal_fee":[array("amount":"5","priority":1,"currency_id":"USDT")],
+        //                         "withdrawal_fee":[array("$amount":"5","$priority":1,"currency_id":"USDT")],
         //                         "deposit_fee":array(),
         //                         "suspended_reason":"wallet_maintenance",
         //                         "deposit_suspended":false,
@@ -307,9 +331,20 @@ class probit extends Exchange {
             $withdrawalSuspended = $this->safe_value($platform, 'withdrawal_suspended');
             $active = !($depositSuspended && $withdrawalSuspended);
             $withdrawalFees = $this->safe_value($platform, 'withdrawal_fee', array());
-            $withdrawalFeesByPriority = $this->sort_by($withdrawalFees, 'priority');
+            $fees = array();
+            // sometimes the withdrawal $fee is an empty object
+            // array( array( 'amount' => '0.015', 'priority' => 1, 'currency_id' => 'ETH' ), array() )
+            for ($j = 0; $j < count($withdrawalFees); $j++) {
+                $withdrawalFee = $withdrawalFees[$j];
+                $amount = $this->safe_number($withdrawalFee, 'amount');
+                $priority = $this->safe_integer($withdrawalFee, 'priority');
+                if (($amount !== null) && ($priority !== null)) {
+                    $fees[] = $withdrawalFee;
+                }
+            }
+            $withdrawalFeesByPriority = $this->sort_by($fees, 'priority');
             $withdrawalFee = $this->safe_value($withdrawalFeesByPriority, 0, array());
-            $fee = $this->safe_float($withdrawalFee, 'amount');
+            $fee = $this->safe_number($withdrawalFee, 'amount');
             $result[$code] = array(
                 'id' => $id,
                 'code' => $code,
@@ -323,20 +358,12 @@ class probit extends Exchange {
                         'min' => pow(10, -$precision),
                         'max' => pow(10, $precision),
                     ),
-                    'price' => array(
-                        'min' => pow(10, -$precision),
-                        'max' => pow(10, $precision),
-                    ),
-                    'cost' => array(
-                        'min' => null,
-                        'max' => null,
-                    ),
                     'deposit' => array(
-                        'min' => $this->safe_float($platform, 'min_deposit_amount'),
+                        'min' => $this->safe_number($platform, 'min_deposit_amount'),
                         'max' => null,
                     ),
                     'withdraw' => array(
-                        'min' => $this->safe_float($platform, 'min_withdrawal_amount'),
+                        'min' => $this->safe_number($platform, 'min_withdrawal_amount'),
                         'max' => null,
                     ),
                 ),
@@ -359,15 +386,19 @@ class probit extends Exchange {
         //         )
         //     }
         //
+        $result = array(
+            'info' => $response,
+            'timestamp' => null,
+            'datetime' => null,
+        );
         $data = $this->safe_value($response, 'data');
-        $result = array( 'info' => $data );
         for ($i = 0; $i < count($data); $i++) {
             $balance = $data[$i];
             $currencyId = $this->safe_string($balance, 'currency_id');
             $code = $this->safe_currency_code($currencyId);
             $account = $this->account();
-            $account['total'] = $this->safe_float($balance, 'total');
-            $account['free'] = $this->safe_float($balance, 'available');
+            $account['total'] = $this->safe_string($balance, 'total');
+            $account['free'] = $this->safe_string($balance, 'available');
             $result[$code] = $account;
         }
         return $this->parse_balance($result);
@@ -391,7 +422,7 @@ class probit extends Exchange {
         //
         $data = $this->safe_value($response, 'data', array());
         $dataBySide = $this->group_by($data, 'side');
-        return $this->parse_order_book($dataBySide, null, 'buy', 'sell', 'price', 'quantity');
+        return $this->parse_order_book($dataBySide, $symbol, null, 'buy', 'sell', 'price', 'quantity');
     }
 
     public function fetch_tickers($symbols = null, $params = array ()) {
@@ -420,14 +451,6 @@ class probit extends Exchange {
         //
         $data = $this->safe_value($response, 'data', array());
         return $this->parse_tickers($data, $symbols);
-    }
-
-    public function parse_tickers($rawTickers, $symbols = null) {
-        $tickers = array();
-        for ($i = 0; $i < count($rawTickers); $i++) {
-            $tickers[] = $this->parse_ticker($rawTickers[$i]);
-        }
-        return $this->filter_by_array($tickers, 'symbol', $symbols);
     }
 
     public function fetch_ticker($symbol, $params = array ()) {
@@ -477,41 +500,33 @@ class probit extends Exchange {
         $timestamp = $this->parse8601($this->safe_string($ticker, 'time'));
         $marketId = $this->safe_string($ticker, 'market_id');
         $symbol = $this->safe_symbol($marketId, $market, '-');
-        $close = $this->safe_float($ticker, 'last');
-        $change = $this->safe_float($ticker, 'change');
-        $percentage = null;
-        $open = null;
-        if ($change !== null) {
-            if ($close !== null) {
-                $open = $close - $change;
-                $percentage = ($change / $open) * 100;
-            }
-        }
-        $baseVolume = $this->safe_float($ticker, 'base_volume');
-        $quoteVolume = $this->safe_float($ticker, 'quote_volume');
+        $close = $this->safe_number($ticker, 'last');
+        $change = $this->safe_number($ticker, 'change');
+        $baseVolume = $this->safe_number($ticker, 'base_volume');
+        $quoteVolume = $this->safe_number($ticker, 'quote_volume');
         $vwap = $this->vwap($baseVolume, $quoteVolume);
-        return array(
+        return $this->safe_ticker(array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_float($ticker, 'high'),
-            'low' => $this->safe_float($ticker, 'low'),
+            'high' => $this->safe_number($ticker, 'high'),
+            'low' => $this->safe_number($ticker, 'low'),
             'bid' => null,
             'bidVolume' => null,
             'ask' => null,
             'askVolume' => null,
             'vwap' => $vwap,
-            'open' => $open,
+            'open' => null,
             'close' => $close,
             'last' => $close,
             'previousClose' => null, // previous day $close
             'change' => $change,
-            'percentage' => $percentage,
+            'percentage' => null,
             'average' => null,
             'baseVolume' => $baseVolume,
             'quoteVolume' => $quoteVolume,
             'info' => $ticker,
-        );
+        ), $market);
     }
 
     public function fetch_my_trades($symbol = null, $since = null, $limit = null, $params = array ()) {
@@ -637,16 +652,13 @@ class probit extends Exchange {
         $marketId = $this->safe_string($trade, 'market_id', $marketId);
         $symbol = $this->safe_symbol($marketId, $market, '-');
         $side = $this->safe_string($trade, 'side');
-        $price = $this->safe_float($trade, 'price');
-        $amount = $this->safe_float($trade, 'quantity');
-        $cost = null;
-        if ($price !== null) {
-            if ($amount !== null) {
-                $cost = $price * $amount;
-            }
-        }
+        $priceString = $this->safe_string($trade, 'price');
+        $amountString = $this->safe_string($trade, 'quantity');
+        $price = $this->parse_number($priceString);
+        $amount = $this->parse_number($amountString);
+        $cost = $this->parse_number(Precise::string_mul($priceString, $amountString));
         $orderId = $this->safe_string($trade, 'order_id');
-        $feeCost = $this->safe_float($trade, 'fee_amount');
+        $feeCost = $this->safe_number($trade, 'fee_amount');
         $fee = null;
         if ($feeCost !== null) {
             $feeCurrencyId = $this->safe_string($trade, 'fee_currency_id');
@@ -702,7 +714,7 @@ class probit extends Exchange {
             $timestamp = intval($timestamp / 1000);
             $firstSunday = 259200; // 1970-01-04T00:00:00.000Z
             $difference = $timestamp - $firstSunday;
-            $numWeeks = $this->integer_divide($difference, $duration);
+            $numWeeks = (int) floor($difference / $duration);
             $previousSunday = $this->sum($firstSunday, $numWeeks * $duration);
             if ($after) {
                 $previousSunday = $this->sum($previousSunday, $duration);
@@ -790,11 +802,11 @@ class probit extends Exchange {
         //
         return array(
             $this->parse8601($this->safe_string($ohlcv, 'start_time')),
-            $this->safe_float($ohlcv, 'open'),
-            $this->safe_float($ohlcv, 'high'),
-            $this->safe_float($ohlcv, 'low'),
-            $this->safe_float($ohlcv, 'close'),
-            $this->safe_float($ohlcv, 'base_volume'),
+            $this->safe_number($ohlcv, 'open'),
+            $this->safe_number($ohlcv, 'high'),
+            $this->safe_number($ohlcv, 'low'),
+            $this->safe_number($ohlcv, 'close'),
+            $this->safe_number($ohlcv, 'base_volume'),
         );
     }
 
@@ -893,37 +905,24 @@ class probit extends Exchange {
         $marketId = $this->safe_string($order, 'market_id');
         $symbol = $this->safe_symbol($marketId, $market, '-');
         $timestamp = $this->parse8601($this->safe_string($order, 'time'));
-        $price = $this->safe_float($order, 'limit_price');
-        $filled = $this->safe_float($order, 'filled_quantity');
-        $remaining = $this->safe_float($order, 'open_quantity');
-        $canceledAmount = $this->safe_float($order, 'cancelled_quantity');
+        $price = $this->safe_number($order, 'limit_price');
+        $filled = $this->safe_number($order, 'filled_quantity');
+        $remaining = $this->safe_number($order, 'open_quantity');
+        $canceledAmount = $this->safe_number($order, 'cancelled_quantity');
         if ($canceledAmount !== null) {
             $remaining = $this->sum($remaining, $canceledAmount);
         }
-        $amount = $this->safe_float($order, 'quantity', $this->sum($filled, $remaining));
-        $cost = $this->safe_float_2($order, 'filled_cost', 'cost');
+        $amount = $this->safe_number($order, 'quantity', $this->sum($filled, $remaining));
+        $cost = $this->safe_number_2($order, 'filled_cost', 'cost');
         if ($type === 'market') {
             $price = null;
-        }
-        $average = null;
-        if ($filled !== null) {
-            if ($cost === null) {
-                if ($price !== null) {
-                    $cost = $price * $filled;
-                }
-            }
-            if ($cost !== null) {
-                if ($filled > 0) {
-                    $average = $cost / $filled;
-                }
-            }
         }
         $clientOrderId = $this->safe_string($order, 'client_order_id');
         if ($clientOrderId === '') {
             $clientOrderId = null;
         }
         $timeInForce = $this->safe_string_upper($order, 'time_in_force');
-        return array(
+        return $this->safe_order(array(
             'id' => $id,
             'info' => $order,
             'clientOrderId' => $clientOrderId,
@@ -940,11 +939,11 @@ class probit extends Exchange {
             'amount' => $amount,
             'filled' => $filled,
             'remaining' => $remaining,
-            'average' => $average,
+            'average' => null,
             'cost' => $cost,
             'fee' => null,
             'trades' => null,
-        );
+        ));
     }
 
     public function cost_to_precision($symbol, $cost) {
@@ -974,7 +973,7 @@ class probit extends Exchange {
         } else if ($type === 'market') {
             // for $market buy it requires the $amount of quote currency to spend
             if ($side === 'buy') {
-                $cost = $this->safe_float($params, 'cost');
+                $cost = $this->safe_number($params, 'cost');
                 $createMarketBuyOrderRequiresPrice = $this->safe_value($this->options, 'createMarketBuyOrderRequiresPrice', true);
                 if ($createMarketBuyOrderRequiresPrice) {
                     if ($price !== null) {
@@ -1022,7 +1021,7 @@ class probit extends Exchange {
         // returned by the exchange on $market buys
         if (($type === 'market') && ($side === 'buy')) {
             $order['amount'] = null;
-            $order['cost'] = floatval($costToPrecision);
+            $order['cost'] = $this->parse_number($costToPrecision);
             $order['remaining'] = null;
         }
         return $order;
@@ -1099,17 +1098,8 @@ class probit extends Exchange {
         return $this->parse_deposit_addresses($data);
     }
 
-    public function parse_deposit_addresses($addresses) {
-        $result = array();
-        for ($i = 0; $i < count($addresses); $i++) {
-            $address = $this->parse_deposit_address($addresses[$i]);
-            $code = $address['currency'];
-            $result[$code] = $address;
-        }
-        return $result;
-    }
-
     public function withdraw($code, $amount, $address, $tag = null, $params = array ()) {
+        list($tag, $params) = $this->handle_withdraw_tag_and_params($tag, $params);
         // In order to use this method
         // you need to allow API withdrawal from the API Settings Page, and
         // and register the list of withdrawal addresses and destination tags on the API Settings page
@@ -1125,13 +1115,20 @@ class probit extends Exchange {
             // 'platform_id' => 'ETH', // if omitted it will use the default platform for the $currency
             'address' => $address,
             'destination_tag' => $tag,
-            'amount' => $this->currency_to_precision($code, $amount),
+            'amount' => $this->number_to_string($amount),
             // which $currency to pay the withdrawal fees
             // only applicable for currencies that accepts multiple withdrawal fee options
             // 'fee_currency_id' => 'ETH', // if omitted it will use the default fee policy for each $currency
             // whether the $amount field includes fees
             // 'include_fee' => false, // makes sense only when fee_currency_id is equal to currency_id
         );
+        $networks = $this->safe_value($this->options, 'networks', array());
+        $network = $this->safe_string_upper($params, 'network'); // this line allows the user to specify either ERC20 or ETH
+        $network = $this->safe_string($networks, $network, $network); // handle ERC20>ETH alias
+        if ($network !== null) {
+            $request['platform_id'] = $network;
+            $params = $this->omit($params, 'network');
+        }
         $response = $this->privatePostWithdrawal (array_merge($request, $params));
         $data = $this->safe_value($response, 'data');
         return $this->parse_transaction($data, $currency);
@@ -1139,7 +1136,7 @@ class probit extends Exchange {
 
     public function parse_transaction($transaction, $currency = null) {
         $id = $this->safe_string($transaction, 'id');
-        $amount = $this->safe_float($transaction, 'amount');
+        $amount = $this->safe_number($transaction, 'amount');
         $address = $this->safe_string($transaction, 'address');
         $tag = $this->safe_string($transaction, 'destination_tag');
         $txid = $this->safe_string($transaction, 'hash');
@@ -1148,7 +1145,7 @@ class probit extends Exchange {
         $currencyId = $this->safe_string($transaction, 'currency_id');
         $code = $this->safe_currency_code($currencyId);
         $status = $this->parse_transaction_status($this->safe_string($transaction, 'status'));
-        $feeCost = $this->safe_float($transaction, 'fee');
+        $feeCost = $this->safe_number($transaction, 'fee');
         $fee = null;
         if ($feeCost !== null && $feeCost !== 0) {
             $fee = array(

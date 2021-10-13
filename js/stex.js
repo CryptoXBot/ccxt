@@ -3,7 +3,8 @@
 //  ---------------------------------------------------------------------------
 
 const Exchange = require ('./base/Exchange');
-const { ArgumentsRequired, AuthenticationError, ExchangeError, InsufficientFunds, OrderNotFound, PermissionDenied, BadRequest, DDoSProtection } = require ('./base/errors');
+const { ArgumentsRequired, AuthenticationError, ExchangeError, InsufficientFunds, OrderNotFound, PermissionDenied, BadRequest, BadSymbol, DDoSProtection, InvalidOrder } = require ('./base/errors');
+const Precise = require ('./base/Precise');
 
 //  ---------------------------------------------------------------------------
 
@@ -13,15 +14,15 @@ module.exports = class stex extends Exchange {
             'id': 'stex',
             'name': 'STEX', // formerly known as stocks.exchange
             'countries': [ 'EE' ], // Estonia
-            'rateLimit': 500, // https://help.stex.com/en/articles/2815043-api-3-rate-limits
+            'rateLimit': 1000 / 3, // https://help.stex.com/en/articles/2815043-api-3-rate-limits
             'certified': false,
             // new metainfo interface
             'has': {
                 'cancelAllOrders': true,
                 'cancelOrder': true,
-                'CORS': false,
+                'CORS': undefined,
                 'createDepositAddress': true,
-                'createMarketOrder': false, // limit orders only
+                'createMarketOrder': undefined, // limit orders only
                 'createOrder': true,
                 'fetchBalance': true,
                 'fetchCurrencies': true,
@@ -69,115 +70,138 @@ module.exports = class stex extends Exchange {
             },
             'api': {
                 'public': {
-                    'get': [
-                        'currencies', // Available Currencies
-                        'currencies/{currencyId}', // Get currency info
-                        'markets', // Available markets
-                        'pairs-groups', // Available currency pairs groups (as displayed at stex trading page)
-                        'currency_pairs/list/{code}', // Available currency pairs
-                        'currency_pairs/group/{currencyPairGroupId}', // Available currency pairs for a given group
-                        'currency_pairs/{currencyPairId}', // Get currency pair information
-                        'ticker', // Tickers list for all currency pairs
-                        'ticker/{currencyPairId}', // Ticker for currency pair
-                        'trades/{currencyPairId}', // Trades for given currency pair
-                        'orderbook/{currencyPairId}', // Orderbook for given currency pair
-                        'chart/{currencyPairId}/{candlesType}', // A list of candles for given currency pair
-                        'deposit-statuses', // Available Deposit Statuses
-                        'deposit-statuses/{statusId}', // Get deposit status info
-                        'withdrawal-statuses', // Available Withdrawal Statuses
-                        'withdrawal-statuses/{statusId}', // Get status info
-                        'ping', // Test API is working and get server time
-                        'mobile-versions', // Shows the official mobile applications data
-                    ],
+                    'get': {
+                        'currencies': 1, // Available Currencies
+                        'currencies/{currencyId}': 1, // Get currency info
+                        'markets': 1, // Available markets
+                        'pairs-groups': 1, // Available currency pairs groups (as displayed at stex trading page)
+                        'currency_pairs/list/{code}': 1, // Available currency pairs
+                        'currency_pairs/group/{currencyPairGroupId}': 1, // Available currency pairs for a given group
+                        'currency_pairs/{currencyPairId}': 1, // Get currency pair information
+                        'ticker': 1, // Tickers list for all currency pairs
+                        'ticker/{currencyPairId}': 1, // Ticker for currency pair
+                        'trades/{currencyPairId}': 1, // Trades for given currency pair
+                        'orderbook/{currencyPairId}': 1, // Orderbook for given currency pair
+                        'chart/{currencyPairId}/{candlesType}': 1, // A list of candles for given currency pair
+                        'deposit-statuses': 1, // Available Deposit Statuses
+                        'deposit-statuses/{statusId}': 1, // Get deposit status info
+                        'withdrawal-statuses': 1, // Available Withdrawal Statuses
+                        'withdrawal-statuses/{statusId}': 1, // Get status info
+                        'ping': 1, // Test API is working and get server time
+                        'mobile-versions': 1, // Shows the official mobile applications data
+                        'twitter': 1, // Get the last 20 posts (stex.com) on Twitter
+                    },
                 },
                 'trading': {
-                    'get': [
-                        'fees/{currencyPairId}', // Returns the user's fees for a given currency pair
-                        'orders', // List your currently open orders
-                        'orders/{currencyPairId}', // List your currently open orders for given currency pair
-                        'order/{orderId}', // Get a single order
-                    ],
-                    'post': [
-                        'orders/{currencyPairId}', // Create new order and put it to the orders processing queue
-                    ],
-                    'delete': [
-                        'orders', // Delete all active orders
-                        'orders/{currencyPairId}', // Delete active orders for given currency pair
-                        'order/{orderId}', // Cancel order
-                    ],
+                    'get': {
+                        'fees/{currencyPairId}': 1, // Returns the user's fees for a given currency pair
+                        'orders': 12, // List your currently open orders
+                        'orders/{currencyPairId}': 6, // List your currently open orders for given currency pair
+                        'order/{orderId}': 12, // Get a single order
+                    },
+                    'post': {
+                        'orders/{currencyPairId}': 1.5, // Create new order and put it to the orders processing queue
+                        'orders/bulk/{currencyPairId}': 12, // Create new orders in a bulk and put it to the orders processing queue
+                    },
+                    'delete': {
+                        'orders': 30, // Delete all active orders
+                        'orders/{currencyPairId}': 12, // Delete active orders for given currency pair
+                        'order/{orderId}': 1.5, // Cancel order
+                    },
                 },
                 'reports': {
-                    'get': [
-                        'orders', // Get past orders
-                        'orders/{orderId}', // Get specified order details
-                        'trades/{currencyPairId}', // Get a list of user trades according to request parameters
-                        'background/{listMode}', // Get reports list for category
-                        'background/{id}', // Get some report info
-                        'background/download/{id}', // Get file by id
-                    ],
-                    'post': [
-                        'background/create', // Create new report
-                    ],
-                    'delete': [
-                        'background/{id}', // Remove report by id
-                    ],
+                    'get': {
+                        'currencies': 12, // Get a list of currencies user had any activity in
+                        'currency_pairs': 12, // Gets the list of currency pairs the user had orders in for all the time
+                        'orders': 12, // Get past orders
+                        'orders/{orderId}': 12, // Get specified order details
+                        'trades/{currencyPairId}': 12, // Get a list of user trades according to request parameters
+                        'background/{listMode}': 12, // Get reports list for category
+                        'background/{id}': 12, // Get some report info
+                        'background/download/{id}': 12, // Get file by id
+                    },
+                    'post': {
+                        'background/create': 12, // Create new report
+                    },
+                    'delete': {
+                        'background/{id}': 12, // Remove report by id
+                    },
                 },
                 'profile': {
-                    'get': [
-                        'info', // Account information
-                        'wallets', // Get a list of user wallets
-                        'wallets/{walletId}', // Single wallet information
-                        'wallets/address/{walletId}', // Get deposit address for given wallet
-                        'deposits', // Get a list of deposits made by user
-                        'deposits/{id}', // Get deposit by id
-                        'withdrawals', // Get a list of withdrawals made by user
-                        'withdrawals/{id}', // Get withdrawal by id
-                        'notifications', // Get notifications
-                        'favorite/currency_pairs', // Get favorite currency pairs
-                        'token-scopes', // Get current token scopes
-                    ],
-                    'post': [
-                        'wallets/burn/{walletId}', // Burns the given wallet
-                        'wallets/{currencyId}', // Create a wallet for given currency
-                        'wallets/address/{walletId}', // Create new deposit address
-                        'withdraw', // Create withdrawal request
-                        'referral/program', // Create referral program
-                        'referral/insert/{code}', // Insert referral code
-                        'referral/bonus_transfer/{currencyId}', // Transfer referral bonuses balance to main balance for given currency
-                    ],
-                    'put': [
-                        'profile/favorite/currency_pairs/set', // Set favorite currency pairs
-                    ],
-                    'delete': [
-                        'profile/withdraw/{withdrawalId}', // Cancel unconfirmed withdrawal
-                    ],
+                    'get': {
+                        'info': 3, // Account information
+                        'wallets': 3, // Get a list of user wallets
+                        'wallets/{walletId}': 3, // Single wallet information
+                        'wallets/address/{walletId}': 3, // Get deposit address for given wallet
+                        'deposits': 3, // Get a list of deposits made by user
+                        'deposits/{id}': 3, // Get deposit by id
+                        'rewards': 3, // Get a list of rewards obtained by user (e.g. in trading competitions)
+                        'rewards/{id}': 3, // Get reward by id
+                        'addressbook': 3, // Get a list of user address book items
+                        'addressbook/{itemId}': 3, // Single address book item
+                        'withdrawals': 3, // Get a list of withdrawals made by user
+                        'withdrawals/{id}': 3, // Get withdrawal by id
+                        'notifications': 3, // Get notifications
+                        'notifications/price': 3, // Get a list of active price alerts
+                        'favorite/currency_pairs': 3, // Get favorite currency pairs
+                        'token-scopes': 3, // Get current token scopes
+                    },
+                    'post': {
+                        'wallets/burn/{walletId}': 3, // Burns the given wallet
+                        'wallets/{walletId}/hold_amount': 3, // Move a part of the funds on the wallet to the "hold" to keep it safe from trading
+                        'wallets/{currencyId}': 3, // Create a wallet for given currency
+                        'wallets/address/{walletId}': 3, // Create new deposit address
+                        'addressbook/disable_item/{itemId}': 3, // Disables the address book item
+                        'addressbook/enable_item/{itemId}': 3, // Enable the address book item
+                        'addressbook/enable_strict_wd': 3, // Restrict the withdrawals to only addresses that are active in addressbook
+                        'addressbook/disable_strict_wd': 3, // Remove restriction to withdraw to only addresses that are active in addressbook. E.g. allow to withdraw to any address.
+                        'withdraw': 30, // Create withdrawal request
+                        'notifications/price': 3, // Create new price alert
+                        'referral/program': 3, // Create referral program
+                        'referral/insert/{code}': 3, // Insert referral code
+                        'referral/bonus_transfer/{currencyId}': 3, // Transfer referral bonuses balance to main balance for given currency
+                    },
+                    'put': {
+                        'favorite/currency_pairs/set': 3, // Set favorite currency pairs
+                    },
+                    'delete': {
+                        'addressbook/{itemId}': 3, // Deletes address book item
+                        'withdraw/{withdrawalId}': 30, // Cancel unconfirmed withdrawal
+                        'notifications/price/{priceAlertId}': 3, // Delete the price alert by ID
+                    },
                 },
                 'verification': {
-                    'get': [
-                        'verification/countries', // Countries list, beta
-                        'verification/stex', // Get information about your KYC, beta
-                    ],
-                    'post': [
-                        'verification/stex', // Update information regarding of your KYC verification, beta
-                    ],
+                    'get': {
+                        'countries': 1, // Countries list, beta
+                        'status': 1, // Get status verify
+                        'fractal/url': 1, // Generate verify url from Fractal
+                        'smart-id': 1, // Check Smart-ID verify
+                        'stex': 1, // Get information about your KYC, beta
+                        'cryptonomica/code': 1, // Get Discount code for Cryptonomica
+                    },
+                    'post': {
+                        'smart-id': 1, // Initialization Smart-ID verify (Send request to Smart-ID App)
+                        'stex': 1, // Update information regarding of your KYC verification, beta
+                        'cryptonomica': 1, // Add verification from Cryptonomica
+                    },
                 },
                 'settings': {
-                    'get': [
-                        'notifications/{event}', // User event notification settings
-                        'notifications', // User events notification settings
-                    ],
-                    'put': [
-                        'notifications', // Set notification settings
-                        'notifications/set',
-                    ],
+                    'get': {
+                        'notifications/{event}': 1, // User event notification settings
+                        'notifications': 1, // User events notification settings
+                    },
+                    'put': {
+                        'notifications': 1, // Set notification settings
+                        'notifications/set': 1,
+                    },
                 },
             },
             'fees': {
                 'trading': {
                     'tierBased': false,
                     'percentage': true,
-                    'taker': 0.002,
-                    'maker': 0.002,
+                    'taker': this.parseNumber ('0.002'),
+                    'maker': this.parseNumber ('0.002'),
                 },
             },
             'commonCurrencies': {
@@ -186,10 +210,22 @@ module.exports = class stex extends Exchange {
                 'BITSW': 'BITS',
                 'BHD': 'Bithold',
                 'BTH': 'Bithereum',
+                'MPH': 'Chasyr Token',
                 'SBTC': 'SBTCT', // SiamBitcoin
             },
             'options': {
                 'parseOrderToPrecision': false,
+                'networks': {
+                    'ERC20': 5,
+                    'ETH': 5,
+                    'OMNI': 10,
+                    'XLM': 20,
+                    'BEP2': 22,
+                    'TRC20': 24,
+                    'TRX': 24,
+                    'SOL': 25,
+                    'BEP20': 501,
+                },
             },
             'exceptions': {
                 'exact': {
@@ -200,6 +236,9 @@ module.exports = class stex extends Exchange {
                     'Server Error': ExchangeError, // { "message": "Server Error" }
                     'This feature is only enabled for users verifies by Cryptonomica': PermissionDenied, // {"success":false,"message":"This feature is only enabled for users verifies by Cryptonomica"}
                     'Too Many Attempts.': DDoSProtection, // { "message": "Too Many Attempts." }
+                    'Selected Pair is disabled': BadSymbol, // {"success":false,"message":"Selected Pair is disabled"}
+                    'Invalid scope(s) provided.': PermissionDenied, // { "message": "Invalid scope(s) provided." }
+                    'The maximum amount of open orders with the same price cannot exceed 10': InvalidOrder, // { "success":false,"message":"The maximum amount of open orders with the same price cannot exceed 10" }
                 },
                 'broad': {
                     'Not enough': InsufficientFunds, // {"success":false,"message":"Not enough  ETH"}
@@ -248,8 +287,9 @@ module.exports = class stex extends Exchange {
             // to add support for multiple withdrawal/deposit methods and
             // differentiated fees for each particular method
             const code = this.safeCurrencyCode (this.safeString (currency, 'code'));
-            const precision = this.safeInteger (currency, 'precision');
-            const fee = this.safeFloat (currency, 'withdrawal_fee_const'); // todo: redesign
+            const precision = this.safeString (currency, 'precision');
+            const amountLimit = this.parsePrecision (precision);
+            const fee = this.safeNumber (currency, 'withdrawal_fee_const'); // todo: redesign
             const active = this.safeValue (currency, 'active', true);
             result[code] = {
                 'id': id,
@@ -260,17 +300,15 @@ module.exports = class stex extends Exchange {
                 'name': this.safeString (currency, 'name'),
                 'active': active,
                 'fee': fee,
-                'precision': precision,
+                'precision': parseInt (precision),
                 'limits': {
-                    'amount': { 'min': Math.pow (10, -precision), 'max': undefined },
-                    'price': { 'min': Math.pow (10, -precision), 'max': undefined },
-                    'cost': { 'min': undefined, 'max': undefined },
+                    'amount': { 'min': this.parseNumber (amountLimit), 'max': undefined },
                     'deposit': {
-                        'min': this.safeFloat (currency, 'minimum_deposit_amount'),
+                        'min': this.safeNumber (currency, 'minimum_deposit_amount'),
                         'max': undefined,
                     },
                     'withdraw': {
-                        'min': this.safeFloat (currency, 'minimum_withdrawal_amount'),
+                        'min': this.safeNumber (currency, 'minimum_withdrawal_amount'),
                         'max': undefined,
                     },
                 },
@@ -331,11 +369,11 @@ module.exports = class stex extends Exchange {
                 'price': this.safeInteger (market, 'market_precision'),
             };
             const active = this.safeValue (market, 'active');
-            const minBuyPrice = this.safeFloat (market, 'min_buy_price');
-            const minSellPrice = this.safeFloat (market, 'min_sell_price');
+            const minBuyPrice = this.safeNumber (market, 'min_buy_price');
+            const minSellPrice = this.safeNumber (market, 'min_sell_price');
             const minPrice = Math.max (minBuyPrice, minSellPrice);
-            const buyFee = this.safeFloat (market, 'buy_fee_percent') / 100;
-            const sellFee = this.safeFloat (market, 'sell_fee_percent') / 100;
+            const buyFee = this.safeNumber (market, 'buy_fee_percent') / 100;
+            const sellFee = this.safeNumber (market, 'sell_fee_percent') / 100;
             const fee = Math.max (buyFee, sellFee);
             result.push ({
                 'id': id,
@@ -354,7 +392,7 @@ module.exports = class stex extends Exchange {
                 'precision': precision,
                 'limits': {
                     'amount': {
-                        'min': this.safeFloat (market, 'min_order_amount'),
+                        'min': this.safeNumber (market, 'min_order_amount'),
                         'max': undefined,
                     },
                     'price': { 'min': minPrice, 'max': undefined },
@@ -472,7 +510,7 @@ module.exports = class stex extends Exchange {
         //     }
         //
         const orderbook = this.safeValue (response, 'data', {});
-        return this.parseOrderBook (orderbook, undefined, 'bid', 'ask', 'price', 'amount');
+        return this.parseOrderBook (orderbook, symbol, undefined, 'bid', 'ask', 'price', 'amount');
     }
 
     parseTicker (ticker, market = undefined) {
@@ -518,46 +556,30 @@ module.exports = class stex extends Exchange {
         const timestamp = this.safeInteger (ticker, 'timestamp');
         const marketId = this.safeString2 (ticker, 'id', 'symbol');
         const symbol = this.safeSymbol (marketId, market, '_');
-        const last = this.safeFloat (ticker, 'last');
-        const open = this.safeFloat (ticker, 'open');
-        let change = undefined;
-        let percentage = undefined;
-        if (last !== undefined) {
-            if ((open !== undefined) && (open > 0)) {
-                change = last - open;
-                percentage = ((100 / open) * last) - 100;
-            }
-        }
-        return {
+        const last = this.safeNumber (ticker, 'last');
+        const open = this.safeNumber (ticker, 'open');
+        return this.safeTicker ({
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'high': this.safeFloat (ticker, 'high'),
-            'low': this.safeFloat (ticker, 'low'),
-            'bid': this.safeFloat (ticker, 'bid'),
+            'high': this.safeNumber (ticker, 'high'),
+            'low': this.safeNumber (ticker, 'low'),
+            'bid': this.safeNumber (ticker, 'bid'),
             'bidVolume': undefined,
-            'ask': this.safeFloat (ticker, 'ask'),
+            'ask': this.safeNumber (ticker, 'ask'),
             'askVolume': undefined,
             'vwap': undefined,
             'open': open,
             'close': last,
             'last': last,
             'previousClose': undefined, // previous day close
-            'change': change,
-            'percentage': percentage,
+            'change': undefined,
+            'percentage': undefined,
             'average': undefined,
-            'baseVolume': this.safeFloat (ticker, 'volumeQuote'),
-            'quoteVolume': this.safeFloat (ticker, 'volume'),
+            'baseVolume': this.safeNumber (ticker, 'volumeQuote'),
+            'quoteVolume': this.safeNumber (ticker, 'volume'),
             'info': ticker,
-        };
-    }
-
-    parseTickers (tickers, symbols = undefined) {
-        const result = [];
-        for (let i = 0; i < tickers.length; i++) {
-            result.push (this.parseTicker (tickers[i]));
-        }
-        return this.filterByArray (result, 'symbol', symbols);
+        }, market);
     }
 
     async fetchTickers (symbols = undefined, params = {}) {
@@ -625,11 +647,11 @@ module.exports = class stex extends Exchange {
         //
         return [
             this.safeInteger (ohlcv, 'time'),
-            this.safeFloat (ohlcv, 'open'),
-            this.safeFloat (ohlcv, 'high'),
-            this.safeFloat (ohlcv, 'low'),
-            this.safeFloat (ohlcv, 'close'),
-            this.safeFloat (ohlcv, 'volume'),
+            this.safeNumber (ohlcv, 'open'),
+            this.safeNumber (ohlcv, 'high'),
+            this.safeNumber (ohlcv, 'low'),
+            this.safeNumber (ohlcv, 'close'),
+            this.safeNumber (ohlcv, 'volume'),
         ];
     }
 
@@ -704,12 +726,11 @@ module.exports = class stex extends Exchange {
         //
         const id = this.safeString (trade, 'id');
         const timestamp = this.safeTimestamp (trade, 'timestamp');
-        const price = this.safeFloat (trade, 'price');
-        const amount = this.safeFloat (trade, 'amount');
-        let cost = undefined;
-        if ((price !== undefined) && (amount !== undefined)) {
-            cost = price * amount;
-        }
+        const priceString = this.safeString (trade, 'price');
+        const amountString = this.safeString (trade, 'amount');
+        const price = this.parseNumber (priceString);
+        const amount = this.parseNumber (amountString);
+        const cost = this.parseNumber (Precise.stringMul (priceString, amountString));
         let symbol = undefined;
         if ((symbol === undefined) && (market !== undefined)) {
             symbol = market['symbol'];
@@ -816,14 +837,18 @@ module.exports = class stex extends Exchange {
         //         ]
         //     }
         //
-        const result = { 'info': response };
+        const result = {
+            'info': response,
+            'timestamp': undefined,
+            'datetime': undefined,
+        };
         const balances = this.safeValue (response, 'data', []);
         for (let i = 0; i < balances.length; i++) {
             const balance = balances[i];
             const code = this.safeCurrencyCode (this.safeString (balance, 'currency_id'));
             const account = this.account ();
-            account['free'] = this.safeFloat (balance, 'balance');
-            account['used'] = this.safeFloat (balance, 'frozen_balance');
+            account['free'] = this.safeString (balance, 'balance');
+            account['used'] = this.safeString (balance, 'frozen_balance');
             result[code] = account;
         }
         return this.parseBalance (result);
@@ -885,9 +910,9 @@ module.exports = class stex extends Exchange {
         const marketId = this.safeString2 (order, 'currency_pair_id', 'currency_pair_name');
         const symbol = this.safeSymbol (marketId, market, '_');
         const timestamp = this.safeTimestamp (order, 'timestamp');
-        const price = this.safeFloat (order, 'price');
-        const amount = this.safeFloat (order, 'initial_amount');
-        const filled = this.safeFloat (order, 'processed_amount');
+        const price = this.safeNumber (order, 'price');
+        const amount = this.safeNumber (order, 'initial_amount');
+        const filled = this.safeNumber (order, 'processed_amount');
         let remaining = undefined;
         let cost = undefined;
         if (filled !== undefined) {
@@ -917,7 +942,7 @@ module.exports = class stex extends Exchange {
                 'order': id,
             });
         }
-        const stopPrice = this.safeFloat (order, 'trigger_price');
+        const stopPrice = this.safeNumber (order, 'trigger_price');
         const result = {
             'info': order,
             'id': id,
@@ -948,7 +973,7 @@ module.exports = class stex extends Exchange {
             if (numFees > 0) {
                 result['fees'] = [];
                 for (let i = 0; i < fees.length; i++) {
-                    const feeCost = this.safeFloat (fees[i], 'amount');
+                    const feeCost = this.safeNumber (fees[i], 'amount');
                     if (feeCost !== undefined) {
                         const feeCurrencyId = this.safeString (fees[i], 'currency_id');
                         const feeCurrencyCode = this.safeCurrencyCode (feeCurrencyId);
@@ -1453,7 +1478,7 @@ module.exports = class stex extends Exchange {
             'hodl': 'pending',
             'amount too low': 'failed',
             'not confirmed': 'pending',
-            'cancelled by User': 'canceled',
+            'cancelled by user': 'canceled',
             'approved': 'pending',
             'finished': 'ok',
             'withdrawal error': 'failed',
@@ -1532,13 +1557,13 @@ module.exports = class stex extends Exchange {
             code = currency['code'];
         }
         const type = ('deposit_status_id' in transaction) ? 'deposit' : 'withdrawal';
-        const amount = this.safeFloat (transaction, 'amount');
+        const amount = this.safeNumber (transaction, 'amount');
         const status = this.parseTransactionStatus (this.safeStringLower (transaction, 'status'));
         const timestamp = this.safeTimestamp2 (transaction, 'timestamp', 'created_ts');
         const updated = this.safeTimestamp (transaction, 'updated_ts');
         const txid = this.safeString (transaction, 'txid');
         let fee = undefined;
-        const feeCost = this.safeFloat (transaction, 'fee');
+        const feeCost = this.safeNumber (transaction, 'fee');
         if (feeCost !== undefined) {
             const feeCurrencyId = this.safeString (transaction, 'fee_currency_id', 'deposit_fee_currency_id');
             const feeCurrencyCode = this.safeCurrencyCode (feeCurrencyId);
@@ -1676,6 +1701,7 @@ module.exports = class stex extends Exchange {
     }
 
     async withdraw (code, amount, address, tag = undefined, params = {}) {
+        [ tag, params ] = this.handleWithdrawTagAndParams (tag, params);
         this.checkAddress (address);
         await this.loadMarkets ();
         const currency = this.currency (code);
@@ -1688,6 +1714,13 @@ module.exports = class stex extends Exchange {
         };
         if (tag !== undefined) {
             request['additional_address_parameter'] = tag;
+        }
+        const networks = this.safeValue (this.options, 'networks', {});
+        let network = this.safeStringUpper (params, 'network'); // this line allows the user to specify either ERC20 or ETH
+        network = this.safeInteger (networks, network, network); // handle ERC20>ETH alias
+        if (network !== undefined) {
+            request['protocol_id'] = network;
+            params = this.omit (params, 'network');
         }
         const response = await this.profilePostWithdraw (this.extend (request, params));
         //
@@ -1728,6 +1761,7 @@ module.exports = class stex extends Exchange {
     }
 
     async fetchFundingFees (codes = undefined, params = {}) {
+        await this.loadMarkets ();
         const response = await this.publicGetCurrencies (params);
         //
         //     {
@@ -1774,8 +1808,8 @@ module.exports = class stex extends Exchange {
         for (let i = 0; i < data.length; i++) {
             const id = this.safeString (data[i], 'id');
             const code = this.safeCurrencyCode (id);
-            withdrawFees[code] = this.safeFloat (data[i], 'withdrawal_fee_const');
-            depositFees[code] = this.safeFloat (data[i], 'deposit_fee_const');
+            withdrawFees[code] = this.safeNumber (data[i], 'withdrawal_fee_const');
+            depositFees[code] = this.safeNumber (data[i], 'deposit_fee_const');
         }
         return {
             'withdraw': withdrawFees,

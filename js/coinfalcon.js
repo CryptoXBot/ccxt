@@ -4,6 +4,7 @@
 
 const Exchange = require ('./base/Exchange');
 const { ExchangeError, AuthenticationError, RateLimitExceeded, ArgumentsRequired } = require ('./base/errors');
+const Precise = require ('./base/Precise');
 
 //  ---------------------------------------------------------------------------
 
@@ -19,6 +20,7 @@ module.exports = class coinfalcon extends Exchange {
                 'cancelOrder': true,
                 'createOrder': true,
                 'fetchBalance': true,
+                'fetchDeposits': true,
                 'fetchMarkets': true,
                 'fetchMyTrades': true,
                 'fetchOpenOrders': true,
@@ -27,6 +29,8 @@ module.exports = class coinfalcon extends Exchange {
                 'fetchTicker': true,
                 'fetchTickers': true,
                 'fetchTrades': true,
+                'fetchWithdrawals': true,
+                'withdraw': true,
             },
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/1294454/41822275-ed982188-77f5-11e8-92bb-496bcd14ca52.jpg',
@@ -40,6 +44,7 @@ module.exports = class coinfalcon extends Exchange {
                 'public': {
                     'get': [
                         'markets',
+                        'markets/{market}',
                         'markets/{market}/orders',
                         'markets/{market}/trades',
                     ],
@@ -49,13 +54,22 @@ module.exports = class coinfalcon extends Exchange {
                         'user/accounts',
                         'user/orders',
                         'user/orders/{id}',
+                        'user/orders/{id}/trades',
                         'user/trades',
+                        'user/fees',
+                        'account/withdrawals/{id}',
+                        'account/withdrawals',
+                        'account/deposit/{id}',
+                        'account/deposits',
+                        'account/deposit_address',
                     ],
                     'post': [
                         'user/orders',
+                        'account/withdraw',
                     ],
                     'delete': [
                         'user/orders/{id}',
+                        'account/withdrawals/{id}',
                     ],
                 },
             },
@@ -120,7 +134,7 @@ module.exports = class coinfalcon extends Exchange {
         const marketId = this.safeString (ticker, 'name');
         const symbol = this.safeSymbol (marketId, market, '-');
         const timestamp = this.milliseconds ();
-        const last = parseFloat (ticker['last_price']);
+        const last = this.safeNumber (ticker, 'last_price');
         return {
             'symbol': symbol,
             'timestamp': timestamp,
@@ -136,11 +150,11 @@ module.exports = class coinfalcon extends Exchange {
             'close': last,
             'last': last,
             'previousClose': undefined,
-            'change': this.safeFloat (ticker, 'change_in_24h'),
+            'change': this.safeNumber (ticker, 'change_in_24h'),
             'percentage': undefined,
             'average': undefined,
             'baseVolume': undefined,
-            'quoteVolume': this.safeFloat (ticker, 'volume'),
+            'quoteVolume': this.safeNumber (ticker, 'volume'),
             'info': ticker,
         };
     }
@@ -172,25 +186,22 @@ module.exports = class coinfalcon extends Exchange {
         };
         const response = await this.publicGetMarketsMarketOrders (this.extend (request, params));
         const data = this.safeValue (response, 'data', {});
-        return this.parseOrderBook (data, undefined, 'bids', 'asks', 'price', 'size');
+        return this.parseOrderBook (data, symbol, undefined, 'bids', 'asks', 'price', 'size');
     }
 
     parseTrade (trade, market = undefined) {
         const timestamp = this.parse8601 (this.safeString (trade, 'created_at'));
-        const price = this.safeFloat (trade, 'price');
-        const amount = this.safeFloat (trade, 'size');
+        const priceString = this.safeString (trade, 'price');
+        const amountString = this.safeString (trade, 'size');
+        const price = this.parseNumber (priceString);
+        const amount = this.parseNumber (amountString);
+        const cost = this.parseNumber (Precise.stringMul (priceString, amountString));
         const symbol = market['symbol'];
-        let cost = undefined;
-        if (price !== undefined) {
-            if (amount !== undefined) {
-                cost = parseFloat (this.costToPrecision (symbol, price * amount));
-            }
-        }
         const tradeId = this.safeString (trade, 'id');
         const side = this.safeString (trade, 'side');
         const orderId = this.safeString (trade, 'order_id');
         let fee = undefined;
-        const feeCost = this.safeFloat (trade, 'fee');
+        const feeCost = this.safeNumber (trade, 'fee');
         if (feeCost !== undefined) {
             const feeCurrencyCode = this.safeString (trade, 'fee_currency_code');
             fee = {
@@ -258,11 +269,10 @@ module.exports = class coinfalcon extends Exchange {
             const balance = balances[i];
             const currencyId = this.safeString (balance, 'currency_code');
             const code = this.safeCurrencyCode (currencyId);
-            const account = {
-                'free': this.safeFloat (balance, 'available_balance'),
-                'used': this.safeFloat (balance, 'hold_balance'),
-                'total': this.safeFloat (balance, 'balance'),
-            };
+            const account = this.account ();
+            account['free'] = this.safeString (balance, 'available_balance');
+            account['used'] = this.safeString (balance, 'hold_balance');
+            account['total'] = this.safeString (balance, 'balance');
             result[code] = account;
         }
         return this.parseBalance (result);
@@ -300,19 +310,9 @@ module.exports = class coinfalcon extends Exchange {
         const marketId = this.safeString (order, 'market');
         const symbol = this.safeSymbol (marketId, market, '-');
         const timestamp = this.parse8601 (this.safeString (order, 'created_at'));
-        const price = this.safeFloat (order, 'price');
-        const amount = this.safeFloat (order, 'size');
-        const filled = this.safeFloat (order, 'size_filled');
-        let remaining = undefined;
-        let cost = undefined;
-        if (amount !== undefined) {
-            if (filled !== undefined) {
-                remaining = Math.max (0, amount - filled);
-            }
-            if (price !== undefined) {
-                cost = filled * price;
-            }
-        }
+        const price = this.safeNumber (order, 'price');
+        const amount = this.safeNumber (order, 'size');
+        const filled = this.safeNumber (order, 'size_filled');
         const status = this.parseOrderStatus (this.safeString (order, 'status'));
         let type = this.safeString (order, 'operation_type');
         if (type !== undefined) {
@@ -321,7 +321,7 @@ module.exports = class coinfalcon extends Exchange {
         }
         const side = this.safeString (order, 'order_type');
         const postOnly = this.safeValue (order, 'post_only');
-        return {
+        return this.safeOrder ({
             'id': this.safeString (order, 'id'),
             'clientOrderId': undefined,
             'datetime': this.iso8601 (timestamp),
@@ -334,16 +334,16 @@ module.exports = class coinfalcon extends Exchange {
             'side': side,
             'price': price,
             'stopPrice': undefined,
-            'cost': cost,
+            'cost': undefined,
             'amount': amount,
             'filled': filled,
-            'remaining': remaining,
+            'remaining': undefined,
             'trades': undefined,
             'fee': undefined,
             'info': order,
             'lastTradeTimestamp': undefined,
             'average': undefined,
-        };
+        });
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
@@ -402,6 +402,191 @@ module.exports = class coinfalcon extends Exchange {
         const data = this.safeValue (response, 'data', []);
         const orders = this.filterByArray (data, 'status', [ 'pending', 'open', 'partially_filled' ], false);
         return this.parseOrders (orders, market, since, limit);
+    }
+
+    async fetchDeposits (code = undefined, since = undefined, limit = undefined, params = {}) {
+        await this.loadMarkets ();
+        const request = {
+            // currency: 'xrp', // optional: currency code in lowercase
+            // status: 'completed', // optional: withdrawal status
+            // since_time // datetime in ISO8601 format (2017-11-06T09:53:08.383210Z)
+            // end_time // datetime in ISO8601 format (2017-11-06T09:53:08.383210Z)
+            // start_time // datetime in ISO8601 format (2017-11-06T09:53:08.383210Z)
+        };
+        let currency = undefined;
+        if (code !== undefined) {
+            currency = this.currency (code);
+            request['currency'] = currency['id'].toLowerCase ();
+        }
+        if (since !== undefined) {
+            request['since_time'] = this.iso8601 (since);
+        }
+        const response = await this.privateGetAccountDeposits (this.extend (request, params));
+        //
+        //     data: [
+        //         {
+        //             id: '6e2f18b5-f80e-xxx-xxx-xxx',
+        //             amount: '0.1',
+        //             status: 'completed',
+        //             currency_code: 'eth',
+        //             txid: '0xxxx',
+        //             address: '0xxxx',
+        //             tag: null,
+        //             type: 'deposit'
+        //         },
+        //     ]
+        //
+        const transactions = this.safeValue (response, 'data', []);
+        transactions.reverse (); // no timestamp but in reversed order
+        return this.parseTransactions (transactions, currency, undefined, limit);
+    }
+
+    async fetchWithdrawals (code = undefined, since = undefined, limit = undefined, params = {}) {
+        await this.loadMarkets ();
+        const request = {
+            // currency: 'xrp', // optional: currency code in lowercase
+            // status: 'completed', // optional: withdrawal status
+            // since_time // datetime in ISO8601 format (2017-11-06T09:53:08.383210Z)
+            // end_time // datetime in ISO8601 format (2017-11-06T09:53:08.383210Z)
+            // start_time // datetime in ISO8601 format (2017-11-06T09:53:08.383210Z)
+        };
+        let currency = undefined;
+        if (code !== undefined) {
+            currency = this.currency (code);
+            request['currency'] = currency['id'].toLowerCase ();
+        }
+        if (since !== undefined) {
+            request['since_time'] = this.iso8601 (since);
+        }
+        const response = await this.privateGetAccountWithdrawals (this.extend (request, params));
+        //
+        //     data: [
+        //         {
+        //             id: '25f6f144-3666-xxx-xxx-xxx',
+        //             amount: '0.01',
+        //             status: 'completed',
+        //             fee: '0.0005',
+        //             currency_code: 'btc',
+        //             txid: '4xxx',
+        //             address: 'bc1xxx',
+        //             tag: null,
+        //             type: 'withdraw'
+        //         },
+        //     ]
+        //
+        const transactions = this.safeValue (response, 'data', []);
+        transactions.reverse (); // no timestamp but in reversed order
+        return this.parseTransactions (transactions, currency, undefined, limit);
+    }
+
+    async withdraw (code, amount, address, tag = undefined, params = {}) {
+        [ tag, params ] = this.handleWithdrawTagAndParams (tag, params);
+        this.checkAddress (address);
+        await this.loadMarkets ();
+        const currency = this.currency (code);
+        const request = {
+            'currency': currency['id'].toLowerCase (),
+            'address': address,
+            'amount': amount,
+            // 'tag': 'string', // withdraw tag/memo
+        };
+        if (tag !== undefined) {
+            request['tag'] = tag;
+        }
+        const response = await this.privatePostAccountWithdraw (this.extend (request, params));
+        //
+        //     data: [
+        //         {
+        //             id: '25f6f144-3666-xxx-xxx-xxx',
+        //             amount: '0.01',
+        //             status: 'approval_pending',
+        //             fee: '0.0005',
+        //             currency_code: 'btc',
+        //             txid: null,
+        //             address: 'bc1xxx',
+        //             tag: null,
+        //             type: 'withdraw'
+        //         },
+        //     ]
+        //
+        const transaction = this.safeValue (response, 'data', []);
+        return this.parseTransaction (transaction, currency);
+    }
+
+    parseTransactionStatus (status) {
+        const statuses = {
+            'completed': 'ok',
+            'denied': 'failed',
+            'approval_pending': 'pending',
+        };
+        return this.safeString (statuses, status, status);
+    }
+
+    parseTransaction (transaction, currency = undefined) {
+        //
+        // fetchWithdrawals, withdraw
+        //
+        //     {
+        //         id: '25f6f144-3666-xxx-xxx-xxx',
+        //         amount: '0.01',
+        //         status: 'completed',
+        //         fee: '0.0005',
+        //         currency_code: 'btc',
+        //         txid: '4xxx',
+        //         address: 'bc1xxx',
+        //         tag: null,
+        //         type: 'withdraw'
+        //     },
+        //
+        // fetchDeposits
+        //
+        //     {
+        //         id: '6e2f18b5-f80e-xxx-xxx-xxx',
+        //         amount: '0.1',
+        //         status: 'completed',
+        //         currency_code: 'eth',
+        //         txid: '0xxxx',
+        //         address: '0xxxx',
+        //         tag: null,
+        //         type: 'deposit'
+        //     },
+        //
+        const id = this.safeString (transaction, 'id');
+        const address = this.safeString (transaction, 'address');
+        const tag = this.safeString (transaction, 'tag');
+        const txid = this.safeString (transaction, 'txid');
+        const currencyId = this.safeString (transaction, 'currency_code');
+        const code = this.safeCurrencyCode (currencyId, currency);
+        let type = this.safeString (transaction, 'type');
+        if (type === 'withdraw') {
+            type = 'withdrawal';
+        }
+        const status = this.parseTransactionStatus (this.safeString (transaction, 'status'));
+        const amountString = this.safeString (transaction, 'amount');
+        const amount = this.parseNumber (amountString);
+        const feeCostString = this.safeString (transaction, 'fee');
+        let feeCost = 0;
+        if (feeCostString !== undefined) {
+            feeCost = this.parseNumber (feeCostString);
+        }
+        return {
+            'info': transaction,
+            'id': id,
+            'txid': txid,
+            'timestamp': undefined,
+            'datetime': undefined,
+            'address': address,
+            'tag': tag,
+            'type': type,
+            'amount': amount,
+            'currency': code,
+            'status': status,
+            'updated': undefined,
+            'fee': {
+                'currency': code,
+                'cost': feeCost,
+            },
+        };
     }
 
     nonce () {

@@ -19,11 +19,10 @@ class xena extends Exchange {
             'name' => 'Xena Exchange',
             'countries' => array( 'VC', 'UK' ),
             'rateLimit' => 100,
-            'certified' => true,
             'has' => array(
-                'CORS' => false,
                 'cancelAllOrders' => true,
                 'cancelOrder' => true,
+                'CORS' => null,
                 'createDepositAddress' => true,
                 'createOrder' => true,
                 'editOrder' => true,
@@ -49,7 +48,7 @@ class xena extends Exchange {
                 'logo' => 'https://user-images.githubusercontent.com/51840849/87489843-bb469280-c64c-11ea-91aa-69c6326506af.jpg',
                 'test' => array(
                     'public' => 'https://trading.demo.xena.io/api',
-                    'private' => 'https://api.demo.xena.io/trading',
+                    'private' => 'https://api.demo.xena.io',
                 ),
                 'api' => array(
                     'public' => 'https://trading.xena.exchange/api',
@@ -286,8 +285,8 @@ class xena extends Exchange {
                 'price' => $pricePrecision,
                 'amount' => 0,
             );
-            $maxCost = $this->safe_float($market, 'maxOrderQty');
-            $minCost = $this->safe_float($market, 'minOrderQuantity');
+            $maxCost = $this->safe_number($market, 'maxOrderQty');
+            $minCost = $this->safe_number($market, 'minOrderQuantity');
             $limits = array(
                 'amount' => array(
                     'min' => null,
@@ -372,23 +371,15 @@ class xena extends Exchange {
                 'info' => $currency,
                 'name' => $name,
                 'active' => $active,
-                'fee' => $this->safe_float($withdraw, 'commission'),
+                'fee' => $this->safe_number($withdraw, 'commission'),
                 'precision' => $precision,
                 'limits' => array(
                     'amount' => array(
                         'min' => null,
                         'max' => null,
                     ),
-                    'price' => array(
-                        'min' => null,
-                        'max' => null,
-                    ),
-                    'cost' => array(
-                        'min' => null,
-                        'max' => null,
-                    ),
                     'withdraw' => array(
-                        'min' => $this->safe_float($withdraw, 'minAmount'),
+                        'min' => $this->safe_number($withdraw, 'minAmount'),
                         'max' => null,
                     ),
                 ),
@@ -416,43 +407,33 @@ class xena extends Exchange {
         $timestamp = $this->milliseconds();
         $marketId = $this->safe_string($ticker, 'symbol');
         $symbol = $this->safe_symbol($marketId, $market);
-        $last = $this->safe_float($ticker, 'lastPx');
-        $open = $this->safe_float($ticker, 'firstPx');
-        $percentage = null;
-        $change = null;
-        $average = null;
-        if (($last !== null) && ($open !== null)) {
-            $change = $last - $open;
-            $average = $this->sum($last, $open) / 2;
-            if ($open > 0) {
-                $percentage = $change / $open * 100;
-            }
-        }
-        $buyVolume = $this->safe_float($ticker, 'buyVolume');
-        $sellVolume = $this->safe_float($ticker, 'sellVolume');
+        $last = $this->safe_number($ticker, 'lastPx');
+        $open = $this->safe_number($ticker, 'firstPx');
+        $buyVolume = $this->safe_number($ticker, 'buyVolume');
+        $sellVolume = $this->safe_number($ticker, 'sellVolume');
         $baseVolume = $this->sum($buyVolume, $sellVolume);
-        return array(
+        return $this->safe_ticker(array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_float($ticker, 'highPx'),
-            'low' => $this->safe_float($ticker, 'lowPx'),
-            'bid' => $this->safe_float($ticker, 'bid'),
+            'high' => $this->safe_number($ticker, 'highPx'),
+            'low' => $this->safe_number($ticker, 'lowPx'),
+            'bid' => $this->safe_number($ticker, 'bid'),
             'bidVolume' => null,
-            'ask' => $this->safe_float($ticker, 'ask'),
+            'ask' => $this->safe_number($ticker, 'ask'),
             'askVolume' => null,
             'vwap' => null,
             'open' => $open,
             'close' => $last,
             'last' => $last,
             'previousClose' => null,
-            'change' => $change,
-            'percentage' => $percentage,
-            'average' => $average,
+            'change' => null,
+            'percentage' => null,
+            'average' => null,
             'baseVolume' => $baseVolume,
             'quoteVolume' => null,
             'info' => $ticker,
-        );
+        ), $market);
     }
 
     public function fetch_ticker($symbol, $params = array ()) {
@@ -528,7 +509,7 @@ class xena extends Exchange {
         $mdEntriesByType = $this->group_by($mdEntry, 'mdEntryType');
         $lastUpdateTime = $this->safe_integer($response, 'lastUpdateTime');
         $timestamp = intval($lastUpdateTime / 1000000);
-        return $this->parse_order_book($mdEntriesByType, $timestamp, '0', '1', 'mdEntryPx', 'mdEntrySize');
+        return $this->parse_order_book($mdEntriesByType, $symbol, $timestamp, '0', '1', 'mdEntryPx', 'mdEntrySize');
     }
 
     public function fetch_accounts($params = array ()) {
@@ -602,24 +583,37 @@ class xena extends Exchange {
         $response = $this->privateGetTradingAccountsAccountIdBalance (array_merge($request, $params));
         //
         //     {
-        //         "$balances" => array(
-        //             array("available":"0","onHold":"0","settled":"0","equity":"0","currency":"BAB","lastUpdated":1564811790485125345),
-        //             array("available":"0","onHold":"0","settled":"0","equity":"0","currency":"BSV","lastUpdated":1564811790485125345),
-        //             array("available":"0","onHold":"0","settled":"0","equity":"0","currency":"BTC","lastUpdated":1564811790485125345),
+        //         "msgType":"XAR",
+        //         "$balances":array(
+        //             {
+        //                 "currency":"BTC",
+        //                 "$lastUpdateTime":1619384111905916598,
+        //                 "available":"0.00549964",
+        //                 "onHold":"0",
+        //                 "settled":"0.00549964",
+        //                 "equity":"0.00549964"
+        //             }
         //         )
         //     }
         //
         $result = array( 'info' => $response );
+        $timestamp = null;
         $balances = $this->safe_value($response, 'balances', array());
         for ($i = 0; $i < count($balances); $i++) {
             $balance = $balances[$i];
+            $lastUpdateTime = $this->safe_string($balance, 'lastUpdateTime');
+            $lastUpdated = mb_substr($lastUpdateTime, 0, 13 - 0);
+            $currentTimestamp = intval($lastUpdated);
+            $timestamp = ($timestamp === null) ? $currentTimestamp : max ($timestamp, $currentTimestamp);
             $currencyId = $this->safe_string($balance, 'currency');
             $code = $this->safe_currency_code($currencyId);
             $account = $this->account();
-            $account['free'] = $this->safe_float($balance, 'available');
-            $account['used'] = $this->safe_float($balance, 'onHold');
+            $account['free'] = $this->safe_string($balance, 'available');
+            $account['used'] = $this->safe_string($balance, 'onHold');
             $result[$code] = $account;
         }
+        $result['timestamp'] = $timestamp;
+        $result['datetime'] = $this->iso8601($timestamp);
         return $this->parse_balance($result);
     }
 
@@ -674,20 +668,17 @@ class xena extends Exchange {
         $orderId = $this->safe_string($trade, 'orderId');
         $marketId = $this->safe_string($trade, 'symbol');
         $symbol = $this->safe_symbol($marketId, $market);
-        $price = $this->safe_float_2($trade, 'lastPx', 'mdEntryPx');
-        $amount = $this->safe_float_2($trade, 'lastQty', 'mdEntrySize');
-        $cost = null;
-        if ($price !== null) {
-            if ($amount !== null) {
-                $cost = $price * $amount;
-            }
-        }
+        $priceString = $this->safe_string_2($trade, 'lastPx', 'mdEntryPx');
+        $amountString = $this->safe_string_2($trade, 'lastQty', 'mdEntrySize');
+        $price = $this->parse_number($priceString);
+        $amount = $this->parse_number($amountString);
+        $cost = $this->parse_number(Precise::string_mul($priceString, $amountString));
         $fee = null;
-        $feeCost = $this->safe_float($trade, 'commission');
+        $feeCost = $this->safe_number($trade, 'commission');
         if ($feeCost !== null) {
             $feeCurrencyId = $this->safe_string($trade, 'commCurrency');
             $feeCurrencyCode = $this->safe_currency_code($feeCurrencyId);
-            $feeRate = $this->safe_float($trade, 'commRate');
+            $feeRate = $this->safe_number($trade, 'commRate');
             $fee = array(
                 'cost' => $feeCost,
                 'rate' => $feeRate,
@@ -802,15 +793,15 @@ class xena extends Exchange {
         //
         $transactTime = $this->safe_integer($ohlcv, 'transactTime');
         $timestamp = intval($transactTime / 1000000);
-        $buyVolume = $this->safe_float($ohlcv, 'buyVolume');
-        $sellVolume = $this->safe_float($ohlcv, 'sellVolume');
+        $buyVolume = $this->safe_number($ohlcv, 'buyVolume');
+        $sellVolume = $this->safe_number($ohlcv, 'sellVolume');
         $volume = $this->sum($buyVolume, $sellVolume);
         return array(
             $timestamp,
-            $this->safe_float($ohlcv, 'firstPx'),
-            $this->safe_float($ohlcv, 'highPx'),
-            $this->safe_float($ohlcv, 'lowPx'),
-            $this->safe_float($ohlcv, 'lastPx'),
+            $this->safe_number($ohlcv, 'firstPx'),
+            $this->safe_number($ohlcv, 'highPx'),
+            $this->safe_number($ohlcv, 'lowPx'),
+            $this->safe_number($ohlcv, 'lastPx'),
             $volume,
         );
     }
@@ -935,11 +926,10 @@ class xena extends Exchange {
         $status = $this->parse_order_status($this->safe_string($order, 'ordStatus'));
         $marketId = $this->safe_string($order, 'symbol');
         $symbol = $this->safe_symbol($marketId, $market);
-        $price = $this->safe_float($order, 'price');
-        $amount = $this->safe_float($order, 'orderQty');
-        $filled = $this->safe_float($order, 'cumQty');
-        $remaining = $this->safe_float($order, 'leavesQty');
-        $cost = null;
+        $price = $this->safe_number($order, 'price');
+        $amount = $this->safe_number($order, 'orderQty');
+        $filled = $this->safe_number($order, 'cumQty');
+        $remaining = $this->safe_number($order, 'leavesQty');
         $side = $this->safe_string_lower($order, 'side');
         if ($side === '1') {
             $side = 'buy';
@@ -956,12 +946,7 @@ class xena extends Exchange {
         } else if ($type === '4') {
             $type = 'stop-limit';
         }
-        if ($cost === null) {
-            if (($price !== null) && ($filled !== null)) {
-                $cost = $price * $filled;
-            }
-        }
-        return array(
+        return $this->safe_order(array(
             'id' => $id,
             'clientOrderId' => $clientOrderId,
             'info' => $order,
@@ -976,14 +961,14 @@ class xena extends Exchange {
             'price' => $price,
             'stopPrice' => null,
             'amount' => $amount,
-            'cost' => $cost,
+            'cost' => null,
             'average' => null,
             'filled' => $filled,
             'remaining' => $remaining,
             'status' => $status,
             'fee' => null,
             'trades' => null,
-        );
+        ));
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
@@ -1036,7 +1021,7 @@ class xena extends Exchange {
             $request['price'] = $this->price_to_precision($symbol, $price);
         }
         if (($type === 'stop') || ($type === 'stop-limit')) {
-            $stopPx = $this->safe_float($params, 'stopPx');
+            $stopPx = $this->safe_number($params, 'stopPx');
             if ($stopPx === null) {
                 throw new InvalidOrder($this->id . ' createOrder() requires a $stopPx param for order $type ' . $type);
             }
@@ -1115,12 +1100,12 @@ class xena extends Exchange {
         if ($price !== null) {
             $request['price'] = $this->price_to_precision($symbol, $price);
         }
-        $stopPx = $this->safe_float($params, 'stopPx');
+        $stopPx = $this->safe_number($params, 'stopPx');
         if ($stopPx !== null) {
             $request['stopPx'] = $this->price_to_precision($symbol, $stopPx);
             $params = $this->omit($params, 'stopPx');
         }
-        $capPrice = $this->safe_float($params, 'capPrice');
+        $capPrice = $this->safe_number($params, 'capPrice');
         if ($capPrice !== null) {
             $request['capPrice'] = $this->price_to_precision($symbol, $capPrice);
             $params = $this->omit($params, 'capPrice');
@@ -1475,7 +1460,7 @@ class xena extends Exchange {
         $address = $this->safe_string($transaction, 'address');
         $addressFrom = null;
         $addressTo = $address;
-        $amount = $this->safe_float($transaction, 'amount');
+        $amount = $this->safe_number($transaction, 'amount');
         $status = $this->parse_transaction_status($this->safe_string($transaction, 'status'));
         $fee = null;
         return array(
@@ -1515,6 +1500,7 @@ class xena extends Exchange {
     }
 
     public function withdraw($code, $amount, $address, $tag = null, $params = array ()) {
+        list($tag, $params) = $this->handle_withdraw_tag_and_params($tag, $params);
         $this->check_address($address);
         $this->load_markets();
         $this->load_accounts();
@@ -1572,7 +1558,7 @@ class xena extends Exchange {
         $referenceAccount = null;
         $type = $this->parse_ledger_entry_type($this->safe_string($item, 'kind'));
         $code = $this->safe_currency_code($this->safe_string($item, 'currency'), $currency);
-        $amount = $this->safe_float($item, 'amount');
+        $amount = $this->safe_number($item, 'amount');
         if ($amount < 0) {
             $direction = 'out';
             $amount = abs($amount);
@@ -1584,11 +1570,11 @@ class xena extends Exchange {
             $timestamp = intval($timestamp / 1000000);
         }
         $fee = array(
-            'cost' => $this->safe_float($item, 'commission'),
+            'cost' => $this->safe_number($item, 'commission'),
             'currency' => $code,
         );
         $before = null;
-        $after = $this->safe_float($item, 'balance');
+        $after = $this->safe_number($item, 'balance');
         $status = 'ok';
         return array(
             'info' => $item,

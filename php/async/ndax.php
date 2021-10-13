@@ -8,6 +8,7 @@ namespace ccxt\async;
 use Exception; // a common import
 use \ccxt\ExchangeError;
 use \ccxt\AuthenticationError;
+use \ccxt\Precise;
 
 class ndax extends Exchange {
 
@@ -34,12 +35,14 @@ class ndax extends Exchange {
                 'fetchMyTrades' => true,
                 'fetchOHLCV' => true,
                 'fetchOpenOrders' => true,
-                'fetchOrders' => true,
                 'fetchOrder' => true,
                 'fetchOrderBook' => true,
                 'fetchOrderTrades' => true,
+                'fetchOrders' => true,
                 'fetchTicker' => true,
                 'fetchTrades' => true,
+                'fetchWithdrawals' => true,
+                'signIn' => true,
             ),
             'timeframes' => array(
                 '1m' => '60',
@@ -190,6 +193,10 @@ class ndax extends Exchange {
                 'apiKey' => true,
                 'secret' => true,
                 'uid' => true,
+                // these credentials are required for signIn() and withdraw()
+                'login' => true,
+                'password' => true,
+                'twofa' => true,
             ),
             'precisionMode' => TICK_SIZE,
             'exceptions' => array(
@@ -200,6 +207,7 @@ class ndax extends Exchange {
                 ),
                 'broad' => array(
                     'Invalid InstrumentId' => '\\ccxt\\BadSymbol', // array("result":false,"errormsg":"Invalid InstrumentId => 10000","errorcode":100,"detail":null)
+                    'This endpoint requires 2FACode along with the payload' => '\\ccxt\\AuthenticationError',
                 ),
             ),
             'options' => array(
@@ -215,6 +223,50 @@ class ndax extends Exchange {
                 ),
             ),
         ));
+    }
+
+    public function sign_in($params = array ()) {
+        $this->check_required_credentials();
+        if ($this->login === null || $this->password === null || $this->twofa === null) {
+            throw new AuthenticationError($this->id . ' signIn() requires exchange.login, exchange.password and exchange.twofa credentials');
+        }
+        $request = array(
+            'grant_type' => 'client_credentials', // the only supported value
+        );
+        $response = yield $this->publicGetAuthenticate (array_merge($request, $params));
+        //
+        //     {
+        //         "Authenticated":true,
+        //         "Requires2FA":true,
+        //         "AuthType":"Google",
+        //         "AddtlInfo":"",
+        //         "Pending2FaToken" => "6f5c4e66-f3ee-493e-9227-31cc0583b55f"
+        //     }
+        //
+        $sessionToken = $this->safe_string($response, 'SessionToken');
+        if ($sessionToken !== null) {
+            $this->options['sessionToken'] = $sessionToken;
+            return $response;
+        }
+        $pending2faToken = $this->safe_string($response, 'Pending2FaToken');
+        if ($pending2faToken !== null) {
+            $this->options['pending2faToken'] = $pending2faToken;
+            $request = array(
+                'Code' => $this->oath(),
+            );
+            $response = yield $this->publicGetAuthenticate2FA (array_merge($request, $params));
+            //
+            //     {
+            //         "Authenticated" => true,
+            //         "UserId":57765,
+            //         "SessionToken":"4a2a5857-c4e5-4fac-b09e-2c4c30b591a0"
+            //     }
+            //
+            $sessionToken = $this->safe_string($response, 'SessionToken');
+            $this->options['sessionToken'] = $sessionToken;
+            return $response;
+        }
+        return $response;
     }
 
     public function fetch_currencies($params = array ()) {
@@ -246,7 +298,7 @@ class ndax extends Exchange {
             $name = $this->safe_string($currency, 'ProductFullName');
             $type = $this->safe_string($currency, 'ProductType');
             $code = $this->safe_currency_code($this->safe_string($currency, 'Product'));
-            $precision = $this->safe_float($currency, 'TickSize');
+            $precision = $this->safe_number($currency, 'TickSize');
             $isDisabled = $this->safe_value($currency, 'IsDisabled');
             $active = !$isDisabled;
             $result[$code] = array(
@@ -327,8 +379,8 @@ class ndax extends Exchange {
             $quote = $this->safe_currency_code($this->safe_string($market, 'Product2Symbol'));
             $symbol = $base . '/' . $quote;
             $precision = array(
-                'amount' => $this->safe_float($market, 'QuantityIncrement'),
-                'price' => $this->safe_float($market, 'PriceIncrement'),
+                'amount' => $this->safe_number($market, 'QuantityIncrement'),
+                'price' => $this->safe_number($market, 'PriceIncrement'),
             );
             $sessionStatus = $this->safe_string($market, 'SessionStatus');
             $isDisable = $this->safe_value($market, 'IsDisable');
@@ -346,11 +398,11 @@ class ndax extends Exchange {
                 'precision' => $precision,
                 'limits' => array(
                     'amount' => array(
-                        'min' => $this->safe_float($market, 'MinimumQuantity'),
+                        'min' => $this->safe_number($market, 'MinimumQuantity'),
                         'max' => null,
                     ),
                     'price' => array(
-                        'min' => $this->safe_float($market, 'MinimumPrice'),
+                        'min' => $this->safe_number($market, 'MinimumPrice'),
                         'max' => null,
                     ),
                     'cost' => array(
@@ -363,9 +415,10 @@ class ndax extends Exchange {
         return $result;
     }
 
-    public function parse_order_book($orderbook, $timestamp = null, $bidsKey = 'bids', $asksKey = 'asks', $priceKey = 6, $amountKey = 8) {
+    public function parse_order_book($orderbook, $symbol, $timestamp = null, $bidsKey = 'bids', $asksKey = 'asks', $priceKey = 6, $amountKey = 8) {
         $nonce = null;
         $result = array(
+            'symbol' => $symbol,
             'bids' => array(),
             'asks' => array(),
             'timestamp' => null,
@@ -387,7 +440,7 @@ class ndax extends Exchange {
                 $nonce = max ($nonce, $newNonce);
             }
             $bidask = $this->parse_bid_ask($level, $priceKey, $amountKey);
-            $levelSide = $this->safe_value($level, 9);
+            $levelSide = $this->safe_integer($level, 9);
             $side = $levelSide ? $asksKey : $bidsKey;
             $result[$side][] = $bidask;
         }
@@ -432,7 +485,7 @@ class ndax extends Exchange {
         //         [97244115,0,1607456142964,0,19069.32,1,19069.99,8,0.141604,1],
         //     ]
         //
-        return $this->parse_order_book($response);
+        return $this->parse_order_book($response, $symbol);
     }
 
     public function parse_ticker($ticker, $market = null) {
@@ -471,27 +524,27 @@ class ndax extends Exchange {
         $timestamp = $this->safe_integer($ticker, 'TimeStamp');
         $marketId = $this->safe_string($ticker, 'InstrumentId');
         $symbol = $this->safe_symbol($marketId, $market);
-        $last = $this->safe_float($ticker, 'LastTradedPx');
-        $percentage = $this->safe_float($ticker, 'Rolling24HrPxChangePercent');
-        $change = $this->safe_float($ticker, 'Rolling24HrPxChange');
-        $open = $this->safe_float($ticker, 'SessionOpen');
+        $last = $this->safe_number($ticker, 'LastTradedPx');
+        $percentage = $this->safe_number($ticker, 'Rolling24HrPxChangePercent');
+        $change = $this->safe_number($ticker, 'Rolling24HrPxChange');
+        $open = $this->safe_number($ticker, 'SessionOpen');
         $average = null;
         if (($last !== null) && ($change !== null)) {
             $average = $this->sum($last, $open) / 2;
         }
-        $baseVolume = $this->safe_float($ticker, 'Rolling24HrVolume');
-        $quoteVolume = $this->safe_float($ticker, 'Rolling24HrNotional');
+        $baseVolume = $this->safe_number($ticker, 'Rolling24HrVolume');
+        $quoteVolume = $this->safe_number($ticker, 'Rolling24HrNotional');
         $vwap = $this->vwap($baseVolume, $quoteVolume);
         return array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_float($ticker, 'SessionHigh'),
-            'low' => $this->safe_float($ticker, 'SessionLow'),
-            'bid' => $this->safe_float($ticker, 'BestBid'),
-            'bidVolume' => null, // $this->safe_float($ticker, 'BidQty'), always shows 0
-            'ask' => $this->safe_float($ticker, 'BestOffer'),
-            'askVolume' => null, // $this->safe_float($ticker, 'AskQty'), always shows 0
+            'high' => $this->safe_number($ticker, 'SessionHigh'),
+            'low' => $this->safe_number($ticker, 'SessionLow'),
+            'bid' => $this->safe_number($ticker, 'BestBid'),
+            'bidVolume' => null, // $this->safe_number($ticker, 'BidQty'), always shows 0
+            'ask' => $this->safe_number($ticker, 'BestOffer'),
+            'askVolume' => null, // $this->safe_number($ticker, 'AskQty'), always shows 0
             'vwap' => $vwap,
             'open' => $open,
             'close' => $last,
@@ -564,11 +617,11 @@ class ndax extends Exchange {
         //
         return array(
             $this->safe_integer($ohlcv, 0),
-            $this->safe_float($ohlcv, 3),
-            $this->safe_float($ohlcv, 1),
-            $this->safe_float($ohlcv, 2),
-            $this->safe_float($ohlcv, 4),
-            $this->safe_float($ohlcv, 5),
+            $this->safe_number($ohlcv, 3),
+            $this->safe_number($ohlcv, 1),
+            $this->safe_number($ohlcv, 2),
+            $this->safe_number($ohlcv, 4),
+            $this->safe_number($ohlcv, 5),
         );
     }
 
@@ -585,15 +638,15 @@ class ndax extends Exchange {
         $now = $this->milliseconds();
         if ($since === null) {
             if ($limit !== null) {
-                $request['FromDate'] = $this->ymd($now - $duration * $limit * 1000);
-                $request['ToDate'] = $this->ymd($now);
+                $request['FromDate'] = $this->ymdhms($now - $duration * $limit * 1000);
+                $request['ToDate'] = $this->ymdhms($now);
             }
         } else {
-            $request['FromDate'] = $this->ymd($since);
+            $request['FromDate'] = $this->ymdhms($since);
             if ($limit === null) {
-                $request['ToDate'] = $this->ymd($now);
+                $request['ToDate'] = $this->ymdhms($now);
             } else {
-                $request['ToDate'] = $this->ymd($this->sum($since, $duration * $limit * 1000));
+                $request['ToDate'] = $this->ymdhms($this->sum($since, $duration * $limit * 1000));
             }
         }
         $response = yield $this->publicGetGetTickerHistory (array_merge($request, $params));
@@ -711,13 +764,13 @@ class ndax extends Exchange {
         //         "PegPriceType":"Unknown",
         //         "PegOffset":0.0000000000000000000000000000,
         //         "PegLimitOffset":0.0000000000000000000000000000,
-        //         "IpAddress":"5.228.233.138",
+        //         "IpAddress":"x.x.x.x",
         //         "ClientOrderIdUuid":null,
         //         "OMSId":1
         //     }
         //
-        $price = null;
-        $amount = null;
+        $priceString = null;
+        $amountString = null;
         $cost = null;
         $timestamp = null;
         $id = null;
@@ -728,14 +781,11 @@ class ndax extends Exchange {
         $fee = null;
         $type = null;
         if (gettype($trade) === 'array' && count(array_filter(array_keys($trade), 'is_string')) == 0) {
-            $price = $this->safe_float($trade, 3);
-            $amount = $this->safe_float($trade, 2);
-            if (($price !== null) && ($amount !== null)) {
-                $cost = $price * $amount;
-            }
+            $priceString = $this->safe_string($trade, 3);
+            $amountString = $this->safe_string($trade, 2);
             $timestamp = $this->safe_integer($trade, 6);
             $id = $this->safe_string($trade, 0);
-            $marketId = $this->safe_integer($trade, 1);
+            $marketId = $this->safe_string($trade, 1);
             $takerSide = $this->safe_value($trade, 8);
             $side = $takerSide ? 'sell' : 'buy';
             $orderId = $this->safe_string($trade, 4);
@@ -744,13 +794,13 @@ class ndax extends Exchange {
             $id = $this->safe_string($trade, 'TradeId');
             $orderId = $this->safe_string_2($trade, 'OrderId', 'OrigOrderId');
             $marketId = $this->safe_string_2($trade, 'InstrumentId', 'Instrument');
-            $price = $this->safe_float($trade, 'Price');
-            $amount = $this->safe_float($trade, 'Quantity');
-            $cost = $this->safe_float_2($trade, 'Value', 'GrossValueExecuted');
+            $priceString = $this->safe_string($trade, 'Price');
+            $amountString = $this->safe_string($trade, 'Quantity');
+            $cost = $this->safe_number_2($trade, 'Value', 'GrossValueExecuted');
             $takerOrMaker = $this->safe_string_lower($trade, 'MakerTaker');
             $side = $this->safe_string_lower($trade, 'Side');
             $type = $this->safe_string_lower($trade, 'OrderType');
-            $feeCost = $this->safe_float($trade, 'Fee');
+            $feeCost = $this->safe_number($trade, 'Fee');
             if ($feeCost !== null) {
                 $feeCurrencyId = $this->safe_string($trade, 'FeeProductId');
                 $feeCurrencyCode = $this->safe_currency_code($feeCurrencyId);
@@ -759,6 +809,11 @@ class ndax extends Exchange {
                     'currency' => $feeCurrencyCode,
                 );
             }
+        }
+        $price = $this->parse_number($priceString);
+        $amount = $this->parse_number($amountString);
+        if ($cost === null) {
+            $cost = $this->parse_number(Precise::string_mul($priceString, $amountString));
         }
         $symbol = $this->safe_symbol($marketId, $market);
         return array(
@@ -801,12 +856,15 @@ class ndax extends Exchange {
     }
 
     public function fetch_accounts($params = array ()) {
+        if (!$this->login) {
+            throw new AuthenticationError($this->id . ' fetchAccounts() requires exchange.login email credential');
+        }
         $omsId = $this->safe_integer($this->options, 'omsId', 1);
         $this->check_required_credentials();
         $request = array(
             'omsId' => $omsId,
             'UserId' => $this->uid,
-            'UserName' => 'igor@ccxt.trade',
+            'UserName' => $this->login,
         );
         $response = yield $this->privateGetGetUserAccounts (array_merge($request, $params));
         //
@@ -868,14 +926,18 @@ class ndax extends Exchange {
         //         ),
         //     )
         //
-        $result = array( 'info' => $response );
+        $result = array(
+            'info' => $response,
+            'timestamp' => null,
+            'datetime' => null,
+        );
         for ($i = 0; $i < count($response); $i++) {
             $balance = $response[$i];
             $currencyId = $this->safe_string($balance, 'ProductId');
             $code = $this->safe_currency_code($currencyId);
             $account = $this->account();
-            $account['total'] = $this->safe_float($balance, 'Amount');
-            $account['used'] = $this->safe_float($balance, 'Hold');
+            $account['total'] = $this->safe_string($balance, 'Amount');
+            $account['used'] = $this->safe_string($balance, 'Hold');
             $result[$code] = $account;
         }
         return $this->parse_balance($result);
@@ -924,8 +986,8 @@ class ndax extends Exchange {
         $type = $this->parse_ledger_entry_type($this->safe_string($item, 'ReferenceType'));
         $currencyId = $this->safe_string($item, 'ProductId');
         $code = $this->safe_currency_code($currencyId, $currency);
-        $credit = $this->safe_float($item, 'CR');
-        $debit = $this->safe_float($item, 'DR');
+        $credit = $this->safe_number($item, 'CR');
+        $debit = $this->safe_number($item, 'DR');
         $amount = null;
         $direction = null;
         if ($credit > 0) {
@@ -937,7 +999,7 @@ class ndax extends Exchange {
         }
         $timestamp = $this->safe_integer($item, 'TimeStamp');
         $before = null;
-        $after = $this->safe_float($item, 'Balance');
+        $after = $this->safe_number($item, 'Balance');
         if ($direction === 'out') {
             $before = $this->sum($after, $amount);
         } else if ($direction === 'in') {
@@ -1085,36 +1147,26 @@ class ndax extends Exchange {
         //
         $id = $this->safe_string_2($order, 'ReplacementOrderId', 'OrderId');
         $timestamp = $this->safe_integer($order, 'ReceiveTime');
-        $lastTradeTimestamp = null;
+        $lastTradeTimestamp = $this->safe_integer($order, 'LastUpdatedTime');
         $marketId = $this->safe_string($order, 'Instrument');
         $symbol = $this->safe_symbol($marketId, $market);
         $side = $this->safe_string_lower($order, 'Side');
         $type = $this->safe_string_lower($order, 'OrderType');
         $clientOrderId = $this->safe_string_2($order, 'ReplacementClOrdId', 'ClientOrderId');
-        $price = $this->safe_float($order, 'Price', 0.0);
+        $price = $this->safe_number($order, 'Price', 0.0);
         $price = ($price > 0.0) ? $price : null;
-        $amount = $this->safe_float($order, 'OrigQuantity');
-        $filled = $this->safe_float($order, 'QuantityExecuted');
-        $cost = $this->safe_float($order, 'GrossValueExecuted');
-        $remaining = null;
-        $average = null;
-        if ($filled !== null) {
-            if ($amount !== null) {
-                $remaining = max (0, $amount - $filled);
-            }
-            if ($filled > 0) {
-                $lastTradeTimestamp = $this->safe_integer($order, 'LastUpdatedTime');
-                $average = $this->safe_float($order, 'AvgPrice', 0.0);
-                $average = ($average > 0) ? $average : null;
-            }
-        }
-        $stopPrice = $this->safe_float($order, 'StopPrice', 0.0);
+        $amount = $this->safe_number($order, 'OrigQuantity');
+        $filled = $this->safe_number($order, 'QuantityExecuted');
+        $cost = $this->safe_number($order, 'GrossValueExecuted');
+        $average = $this->safe_number($order, 'AvgPrice', 0.0);
+        $average = ($average > 0) ? $average : null;
+        $stopPrice = $this->safe_number($order, 'StopPrice', 0.0);
         $stopPrice = ($stopPrice > 0.0) ? $stopPrice : null;
         $timeInForce = null;
         $status = $this->parse_order_status($this->safe_string($order, 'OrderState'));
         $fee = null;
         $trades = null;
-        return array(
+        return $this->safe_order(array(
             'id' => $id,
             'clientOrderId' => $clientOrderId,
             'info' => $order,
@@ -1133,10 +1185,10 @@ class ndax extends Exchange {
             'amount' => $amount,
             'filled' => $filled,
             'average' => $average,
-            'remaining' => $remaining,
+            'remaining' => null,
             'fee' => $fee,
             'trades' => $trades,
-        );
+        ));
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
@@ -1259,7 +1311,7 @@ class ndax extends Exchange {
             $request['InstrumentId'] = $market['id'];
         }
         if ($since !== null) {
-            $request['StartTimeStamp'] = $since;
+            $request['StartTimeStamp'] = intval($since / 1000);
         }
         if ($limit !== null) {
             $request['Depth'] = $limit;
@@ -1463,7 +1515,7 @@ class ndax extends Exchange {
             $request['InstrumentId'] = $market['id'];
         }
         if ($since !== null) {
-            $request['StartTimeStamp'] = $since;
+            $request['StartTimeStamp'] = intval($since / 1000);
         }
         if ($limit !== null) {
             $request['Depth'] = $limit;
@@ -1513,7 +1565,7 @@ class ndax extends Exchange {
         //             "PegPriceType":"Unknown",
         //             "PegOffset":0.0000000000000000000000000000,
         //             "PegLimitOffset":0.0000000000000000000000000000,
-        //             "IpAddress":"5.228.233.138",
+        //             "IpAddress":"x.x.x.x",
         //             "ClientOrderIdUuid":null,
         //             "OMSId":1
         //         ),
@@ -1582,7 +1634,7 @@ class ndax extends Exchange {
         //         "PegPriceType":"Unknown",
         //         "PegOffset":0.0000000000000000000000000000,
         //         "PegLimitOffset":0.0000000000000000000000000000,
-        //         "IpAddress":"5.228.233.138",
+        //         "IpAddress":"x.x.x.x",
         //         "ClientOrderIdUuid":null,
         //         "OMSId":1
         //     }
@@ -1604,7 +1656,7 @@ class ndax extends Exchange {
         $request = array(
             'OMSId' => intval($omsId),
             // 'AccountId' => $accountId,
-            'OrderId' => $id,
+            'OrderId' => intval($id),
         );
         $response = yield $this->privatePostGetOrderHistoryByOrderId (array_merge($request, $params));
         //
@@ -1651,7 +1703,7 @@ class ndax extends Exchange {
         //             "PegPriceType":"Unknown",
         //             "PegOffset":0.0000000000000000000000000000,
         //             "PegLimitOffset":0.0000000000000000000000000000,
-        //             "IpAddress":"5.228.233.138",
+        //             "IpAddress":"x.x.x.x",
         //             "ClientOrderIdUuid":null,
         //             "OMSId":1
         //         ),
@@ -1934,8 +1986,8 @@ class ndax extends Exchange {
         }
         $addressTo = $address;
         $status = $this->parse_transaction_status_by_type($this->safe_string($transaction, 'TicketStatus'), $type);
-        $amount = $this->safe_float($transaction, 'Amount');
-        $feeCost = $this->safe_float($transaction, 'FeeAmount');
+        $amount = $this->safe_number($transaction, 'Amount');
+        $feeCost = $this->safe_number($transaction, 'FeeAmount');
         $fee = null;
         if ($feeCost !== null) {
             $fee = array( 'currency' => $code, 'cost' => $feeCost );
@@ -1961,6 +2013,91 @@ class ndax extends Exchange {
         );
     }
 
+    public function withdraw($code, $amount, $address, $tag = null, $params = array ()) {
+        list($tag, $params) = $this->handle_withdraw_tag_and_params($tag, $params);
+        // this method required login, password and twofa key
+        $sessionToken = $this->safe_string($this->options, 'sessionToken');
+        if ($sessionToken === null) {
+            throw new AuthenticationError($this->id . ' call signIn() method to obtain a session token');
+        }
+        $this->check_address($address);
+        $omsId = $this->safe_integer($this->options, 'omsId', 1);
+        yield $this->load_markets();
+        yield $this->load_accounts();
+        $defaultAccountId = $this->safe_integer_2($this->options, 'accountId', 'AccountId', intval($this->accounts[0]['id']));
+        $accountId = $this->safe_integer_2($params, 'accountId', 'AccountId', $defaultAccountId);
+        $params = $this->omit($params, array( 'accountId', 'AccountId' ));
+        $currency = $this->currency($code);
+        $withdrawTemplateTypesRequest = array(
+            'omsId' => $omsId,
+            'AccountId' => $accountId,
+            'ProductId' => $currency['id'],
+        );
+        $withdrawTemplateTypesResponse = yield $this->privateGetGetWithdrawTemplateTypes ($withdrawTemplateTypesRequest);
+        //
+        //     {
+        //         result => true,
+        //         errormsg => null,
+        //         statuscode => "0",
+        //         TemplateTypes => array(
+        //             array( AccountProviderId => "14", TemplateName => "ToExternalBitcoinAddress", AccountProviderName => "BitgoRPC-BTC" ),
+        //             array( AccountProviderId => "20", TemplateName => "ToExternalBitcoinAddress", AccountProviderName => "TrezorBTC" ),
+        //             array( AccountProviderId => "31", TemplateName => "BTC", AccountProviderName => "BTC Fireblocks 1" )
+        //         )
+        //     }
+        //
+        $templateTypes = $this->safe_value($withdrawTemplateTypesResponse, 'TemplateTypes', array());
+        $firstTemplateType = $this->safe_value($templateTypes, 0);
+        if ($firstTemplateType === null) {
+            throw new ExchangeError($this->id . ' withdraw() could not find a withdraw $template type for ' . $currency['code']);
+        }
+        $templateName = $this->safe_string($firstTemplateType, 'TemplateName');
+        $withdrawTemplateRequest = array(
+            'omsId' => $omsId,
+            'AccountId' => $accountId,
+            'ProductId' => $currency['id'],
+            'TemplateType' => $templateName,
+            'AccountProviderId' => $firstTemplateType['AccountProviderId'],
+        );
+        $withdrawTemplateResponse = yield $this->privateGetGetWithdrawTemplate ($withdrawTemplateRequest);
+        //
+        //     {
+        //         result => true,
+        //         errormsg => null,
+        //         statuscode => "0",
+        //         Template => "array(\"TemplateType\":\"ToExternalBitcoinAddress\",\"Comment\":\"\",\"ExternalAddress\":\"\")"
+        //     }
+        //
+        $template = $this->safe_string($withdrawTemplateResponse, 'Template');
+        if ($template === null) {
+            throw new ExchangeError($this->id . ' withdraw() could not find a withdraw $template for ' . $currency['code']);
+        }
+        $withdrawTemplate = json_decode($template, $as_associative_array = true);
+        $withdrawTemplate['ExternalAddress'] = $address;
+        if ($tag !== null) {
+            if (is_array($withdrawTemplate) && array_key_exists('Memo', $withdrawTemplate)) {
+                $withdrawTemplate['Memo'] = $tag;
+            }
+        }
+        $withdrawPayload = array(
+            'omsId' => $omsId,
+            'AccountId' => $accountId,
+            'ProductId' => $currency['id'],
+            'TemplateForm' => $this->json($withdrawTemplate),
+            'TemplateType' => $templateName,
+        );
+        $withdrawRequest = array(
+            'TfaType' => 'Google',
+            'TFaCode' => $this->oath(),
+            'Payload' => $this->json($withdrawPayload),
+        );
+        $response = yield $this->privatePostCreateWithdrawTicket ($this->deep_extend($withdrawRequest, $params));
+        return array(
+            'info' => $response,
+            'id' => $this->safe_string($response, 'Id'),
+        );
+    }
+
     public function nonce() {
         return $this->milliseconds();
     }
@@ -1969,20 +2106,44 @@ class ndax extends Exchange {
         $url = $this->urls['api'][$api] . '/' . $this->implode_params($path, $params);
         $query = $this->omit($params, $this->extract_params($path));
         if ($api === 'public') {
+            if ($path === 'Authenticate') {
+                $auth = $this->login . ':' . $this->password;
+                $auth64 = base64_encode($auth);
+                $headers = array(
+                    'Authorization' => 'Basic ' . $this->decode($auth64),
+                    // 'Content-Type' => 'application/json',
+                );
+            } else if ($path === 'Authenticate2FA') {
+                $pending2faToken = $this->safe_string($this->options, 'pending2faToken');
+                if ($pending2faToken !== null) {
+                    $headers = array(
+                        'Pending2FaToken' => $pending2faToken,
+                        // 'Content-Type' => 'application/json',
+                    );
+                    $query = $this->omit($query, 'pending2faToken');
+                }
+            }
             if ($query) {
                 $url .= '?' . $this->urlencode($query);
             }
         } else if ($api === 'private') {
             $this->check_required_credentials();
-            $nonce = (string) $this->nonce();
-            $auth = $nonce . $this->uid . $this->apiKey;
-            $signature = $this->hmac($this->encode($auth), $this->encode($this->secret));
-            $headers = array(
-                'Nonce' => $nonce,
-                'APIKey' => $this->apiKey,
-                'Signature' => $signature,
-                'UserId' => $this->uid,
-            );
+            $sessionToken = $this->safe_string($this->options, 'sessionToken');
+            if ($sessionToken === null) {
+                $nonce = (string) $this->nonce();
+                $auth = $nonce . $this->uid . $this->apiKey;
+                $signature = $this->hmac($this->encode($auth), $this->encode($this->secret));
+                $headers = array(
+                    'Nonce' => $nonce,
+                    'APIKey' => $this->apiKey,
+                    'Signature' => $signature,
+                    'UserId' => $this->uid,
+                );
+            } else {
+                $headers = array(
+                    'APToken' => $sessionToken,
+                );
+            }
             if ($method === 'POST') {
                 $headers['Content-Type'] = 'application/json';
                 $body = $this->json($query);

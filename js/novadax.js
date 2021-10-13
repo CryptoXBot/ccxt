@@ -3,8 +3,9 @@
 //  ---------------------------------------------------------------------------
 
 const Exchange = require ('./base/Exchange');
-const { AuthenticationError, ExchangeError, PermissionDenied, BadRequest, CancelPending, OrderNotFound, InsufficientFunds, RateLimitExceeded, InvalidOrder, AccountSuspended, BadSymbol, OnMaintenance } = require ('./base/errors');
+const { AuthenticationError, ExchangeError, PermissionDenied, BadRequest, CancelPending, OrderNotFound, InsufficientFunds, RateLimitExceeded, InvalidOrder, AccountSuspended, BadSymbol, OnMaintenance, ArgumentsRequired } = require ('./base/errors');
 const { TRUNCATE } = require ('./base/functions/number');
+const Precise = require ('./base/Precise');
 
 //  ---------------------------------------------------------------------------
 
@@ -18,8 +19,8 @@ module.exports = class novadax extends Exchange {
             'version': 'v1',
             // new metainfo interface
             'has': {
-                'CORS': false,
                 'cancelOrder': true,
+                'CORS': undefined,
                 'createOrder': true,
                 'fetchAccounts': true,
                 'fetchBalance': true,
@@ -30,9 +31,9 @@ module.exports = class novadax extends Exchange {
                 'fetchOHLCV': true,
                 'fetchOpenOrders': true,
                 'fetchOrder': true,
-                'fetchOrders': true,
-                'fetchOrderTrades': true,
                 'fetchOrderBook': true,
+                'fetchOrderTrades': true,
+                'fetchOrders': true,
                 'fetchTicker': true,
                 'fetchTickers': true,
                 'fetchTime': true,
@@ -101,8 +102,8 @@ module.exports = class novadax extends Exchange {
                 'trading': {
                     'tierBased': false,
                     'percentage': true,
-                    'taker': 0.5 / 100,
-                    'maker': 0.3 / 100,
+                    'taker': this.parseNumber ('0.005'),
+                    'maker': this.parseNumber ('0.003'),
                 },
             },
             'requiredCredentials': {
@@ -197,7 +198,7 @@ module.exports = class novadax extends Exchange {
             };
             const limits = {
                 'amount': {
-                    'min': this.safeFloat (market, 'minOrderAmount'),
+                    'min': this.safeNumber (market, 'minOrderAmount'),
                     'max': undefined,
                 },
                 'price': {
@@ -205,7 +206,7 @@ module.exports = class novadax extends Exchange {
                     'max': undefined,
                 },
                 'cost': {
-                    'min': this.safeFloat (market, 'minOrderValue'),
+                    'min': this.safeNumber (market, 'minOrderValue'),
                     'max': undefined,
                 },
             };
@@ -247,41 +248,33 @@ module.exports = class novadax extends Exchange {
         const timestamp = this.safeInteger (ticker, 'timestamp');
         const marketId = this.safeString (ticker, 'symbol');
         const symbol = this.safeSymbol (marketId, market, '_');
-        const open = this.safeFloat (ticker, 'open24h');
-        const last = this.safeFloat (ticker, 'lastPrice');
-        let percentage = undefined;
-        let change = undefined;
-        let average = undefined;
-        if ((last !== undefined) && (open !== undefined)) {
-            change = last - open;
-            percentage = change / open * 100;
-            average = this.sum (last, open) / 2;
-        }
-        const baseVolume = this.safeFloat (ticker, 'baseVolume24h');
-        const quoteVolume = this.safeFloat (ticker, 'quoteVolume24h');
+        const open = this.safeNumber (ticker, 'open24h');
+        const last = this.safeNumber (ticker, 'lastPrice');
+        const baseVolume = this.safeNumber (ticker, 'baseVolume24h');
+        const quoteVolume = this.safeNumber (ticker, 'quoteVolume24h');
         const vwap = this.vwap (baseVolume, quoteVolume);
-        return {
+        return this.safeTicker ({
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'high': this.safeFloat (ticker, 'high24h'),
-            'low': this.safeFloat (ticker, 'low24h'),
-            'bid': this.safeFloat (ticker, 'bid'),
+            'high': this.safeNumber (ticker, 'high24h'),
+            'low': this.safeNumber (ticker, 'low24h'),
+            'bid': this.safeNumber (ticker, 'bid'),
             'bidVolume': undefined,
-            'ask': this.safeFloat (ticker, 'ask'),
+            'ask': this.safeNumber (ticker, 'ask'),
             'askVolume': undefined,
             'vwap': vwap,
             'open': open,
             'close': last,
             'last': last,
             'previousClose': undefined,
-            'change': change,
-            'percentage': percentage,
-            'average': average,
+            'change': undefined,
+            'percentage': undefined,
+            'average': undefined,
             'baseVolume': baseVolume,
             'quoteVolume': quoteVolume,
             'info': ticker,
-        };
+        }, market);
     }
 
     async fetchTicker (symbol, params = {}) {
@@ -376,7 +369,7 @@ module.exports = class novadax extends Exchange {
         //
         const data = this.safeValue (response, 'data', {});
         const timestamp = this.safeInteger (data, 'timestamp');
-        return this.parseOrderBook (data, timestamp, 'bids', 'asks');
+        return this.parseOrderBook (data, symbol, timestamp, 'bids', 'asks');
     }
 
     parseTrade (trade, market = undefined) {
@@ -424,11 +417,13 @@ module.exports = class novadax extends Exchange {
         const orderId = this.safeString (trade, 'orderId');
         const timestamp = this.safeInteger (trade, 'timestamp');
         const side = this.safeStringLower (trade, 'side');
-        const price = this.safeFloat (trade, 'price');
-        const amount = this.safeFloat (trade, 'amount');
-        let cost = this.safeFloat (trade, 'volume');
-        if ((cost === undefined) && (amount !== undefined) && (price !== undefined)) {
-            cost = amount * price;
+        const priceString = this.safeString (trade, 'price');
+        const amountString = this.safeString (trade, 'amount');
+        const price = this.parseNumber (priceString);
+        const amount = this.parseNumber (amountString);
+        let cost = this.safeNumber (trade, 'volume');
+        if (cost === undefined) {
+            cost = this.parseNumber (Precise.stringMul (priceString, amountString));
         }
         const marketId = this.safeString (trade, 'symbol');
         const symbol = this.safeSymbol (marketId, market, '_');
@@ -440,7 +435,7 @@ module.exports = class novadax extends Exchange {
             const feeCurrencyId = this.safeString (parts, 1);
             const feeCurrencyCode = this.safeCurrencyCode (feeCurrencyId);
             fee = {
-                'cost': this.safeFloat (parts, 0),
+                'cost': this.safeNumber (parts, 0),
                 'currency': feeCurrencyCode,
             };
         }
@@ -548,11 +543,11 @@ module.exports = class novadax extends Exchange {
         const volumeField = this.safeString (options, 'volume', 'amount'); // or vol
         return [
             this.safeTimestamp (ohlcv, 'score'),
-            this.safeFloat (ohlcv, 'openPrice'),
-            this.safeFloat (ohlcv, 'highPrice'),
-            this.safeFloat (ohlcv, 'lowPrice'),
-            this.safeFloat (ohlcv, 'closePrice'),
-            this.safeFloat (ohlcv, volumeField),
+            this.safeNumber (ohlcv, 'openPrice'),
+            this.safeNumber (ohlcv, 'highPrice'),
+            this.safeNumber (ohlcv, 'lowPrice'),
+            this.safeNumber (ohlcv, 'closePrice'),
+            this.safeNumber (ohlcv, volumeField),
         ];
     }
 
@@ -574,15 +569,19 @@ module.exports = class novadax extends Exchange {
         //     }
         //
         const data = this.safeValue (response, 'data', []);
-        const result = { 'info': response };
+        const result = {
+            'info': response,
+            'timestamp': undefined,
+            'datetime': undefined,
+        };
         for (let i = 0; i < data.length; i++) {
             const balance = data[i];
             const currencyId = this.safeString (balance, 'currency');
             const code = this.safeCurrencyCode (currencyId);
             const account = this.account ();
-            account['total'] = this.safeFloat (balance, 'available');
-            account['free'] = this.safeFloat (balance, 'balance');
-            account['used'] = this.safeFloat (balance, 'hold');
+            account['total'] = this.safeString (balance, 'balance');
+            account['free'] = this.safeString (balance, 'available');
+            account['used'] = this.safeString (balance, 'hold');
             result[code] = account;
         }
         return this.parseBalance (result);
@@ -591,24 +590,41 @@ module.exports = class novadax extends Exchange {
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
         await this.loadMarkets ();
         const market = this.market (symbol);
-        const uppercaseType = type.toUpperCase ();
+        let uppercaseType = type.toUpperCase ();
         const uppercaseSide = side.toUpperCase ();
         const request = {
             'symbol': market['id'],
-            'type': uppercaseType, // LIMIT, MARKET
             'side': uppercaseSide, // or SELL
-            // 'accountId': '...', // subaccount id, optional
             // 'amount': this.amountToPrecision (symbol, amount),
             // "price": "1234.5678", // required for LIMIT and STOP orders
+            // 'operator': '' // for stop orders, can be found in order introduction
+            // 'stopPrice': this.priceToPrecision (symbol, stopPrice),
+            // 'accountId': '...', // subaccount id, optional
         };
-        if (uppercaseType === 'LIMIT') {
+        const stopPrice = this.safeNumber (params, 'stopPrice');
+        if (stopPrice === undefined) {
+            if ((uppercaseType === 'STOP_LIMIT') || (uppercaseType === 'STOP_MARKET')) {
+                throw new ArgumentsRequired (this.id + ' createOrder() requires a stopPrice parameter for ' + uppercaseType + ' orders');
+            }
+        } else {
+            if (uppercaseType === 'LIMIT') {
+                uppercaseType = 'STOP_LIMIT';
+            } else if (uppercaseType === 'MARKET') {
+                uppercaseType = 'STOP_MARKET';
+            }
+            const defaultOperator = (uppercaseSide === 'BUY') ? 'LTE' : 'GTE';
+            request['operator'] = this.safeString (params, 'operator', defaultOperator);
+            request['stopPrice'] = this.priceToPrecision (symbol, stopPrice);
+            params = this.omit (params, 'stopPrice');
+        }
+        if ((uppercaseType === 'LIMIT') || (uppercaseType === 'STOP_LIMIT')) {
             request['price'] = this.priceToPrecision (symbol, price);
             request['amount'] = this.amountToPrecision (symbol, amount);
-        } else if (uppercaseType === 'MARKET') {
+        } else if ((uppercaseType === 'MARKET') || (uppercaseType === 'STOP_MARKET')) {
             if (uppercaseSide === 'SELL') {
                 request['amount'] = this.amountToPrecision (symbol, amount);
             } else if (uppercaseSide === 'BUY') {
-                let value = this.safeFloat (params, 'value');
+                let value = this.safeNumber (params, 'value');
                 const createMarketBuyOrderRequiresPrice = this.safeValue (this.options, 'createMarketBuyOrderRequiresPrice', true);
                 if (createMarketBuyOrderRequiresPrice) {
                     if (price !== undefined) {
@@ -625,6 +641,7 @@ module.exports = class novadax extends Exchange {
                 request['value'] = this.decimalToPrecision (value, TRUNCATE, precision, this.precisionMode);
             }
         }
+        request['type'] = uppercaseType;
         const response = await this.privatePostOrdersCreate (this.extend (request, params));
         //
         //     {
@@ -635,14 +652,16 @@ module.exports = class novadax extends Exchange {
         //             "filledAmount": "0",
         //             "filledFee": "0",
         //             "filledValue": "0",
-        //             "id": "633679992971251712",
-        //             "price": "35000",
+        //             "id": "870613508008464384",
+        //             "operator": "GTE",
+        //             "price": "210000",
         //             "side": "BUY",
-        //             "status": "PROCESSING",
+        //             "status": "SUBMITTED",
+        //             "stopPrice": "211000",
         //             "symbol": "BTC_BRL",
-        //             "timestamp": 1571122683535,
-        //             "type": "LIMIT",
-        //             "value": "35"
+        //             "timestamp": 1627612035528,
+        //             "type": "STOP_LIMIT",
+        //             "value": "210"
         //         },
         //         "message": "Success"
         //     }
@@ -821,14 +840,16 @@ module.exports = class novadax extends Exchange {
         //         "filledAmount": "0",
         //         "filledFee": "0",
         //         "filledValue": "0",
-        //         "id": "633679992971251712",
-        //         "price": "35000",
+        //         "id": "870613508008464384",
+        //         "operator": "GTE",
+        //         "price": "210000",
         //         "side": "BUY",
-        //         "status": "PROCESSING",
+        //         "status": "SUBMITTED",
+        //         "stopPrice": "211000",
         //         "symbol": "BTC_BRL",
-        //         "timestamp": 1571122683535,
-        //         "type": "LIMIT",
-        //         "value": "35"
+        //         "timestamp": 1627612035528,
+        //         "type": "STOP_LIMIT",
+        //         "value": "210"
         //     }
         //
         // cancelOrder
@@ -838,21 +859,17 @@ module.exports = class novadax extends Exchange {
         //     }
         //
         const id = this.safeString (order, 'id');
-        const amount = this.safeFloat (order, 'amount');
-        const price = this.safeFloat (order, 'price');
-        const cost = this.safeFloat (order, 'filledValue');
+        const amount = this.safeNumber (order, 'amount');
+        const price = this.safeNumber (order, 'price');
+        const cost = this.safeNumber2 (order, 'filledValue', 'value');
         const type = this.safeStringLower (order, 'type');
         const side = this.safeStringLower (order, 'side');
         const status = this.parseOrderStatus (this.safeString (order, 'status'));
         const timestamp = this.safeInteger (order, 'timestamp');
-        const average = this.safeFloat (order, 'averagePrice');
-        const filled = this.safeFloat (order, 'filledAmount');
-        let remaining = undefined;
-        if ((amount !== undefined) && (filled !== undefined)) {
-            remaining = Math.max (0, amount - filled);
-        }
+        const average = this.safeNumber (order, 'averagePrice');
+        const filled = this.safeNumber (order, 'filledAmount');
         let fee = undefined;
-        const feeCost = this.safeFloat (order, 'filledFee');
+        const feeCost = this.safeNumber (order, 'filledFee');
         if (feeCost !== undefined) {
             fee = {
                 'cost': feeCost,
@@ -861,7 +878,8 @@ module.exports = class novadax extends Exchange {
         }
         const marketId = this.safeString (order, 'symbol');
         const symbol = this.safeSymbol (marketId, market, '_');
-        return {
+        const stopPrice = this.safeNumber (order, 'stopPrice');
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': undefined,
             'info': order,
@@ -874,19 +892,20 @@ module.exports = class novadax extends Exchange {
             'postOnly': undefined,
             'side': side,
             'price': price,
-            'stopPrice': undefined,
+            'stopPrice': stopPrice,
             'amount': amount,
             'cost': cost,
             'average': average,
             'filled': filled,
-            'remaining': remaining,
+            'remaining': undefined,
             'status': status,
             'fee': fee,
             'trades': undefined,
-        };
+        });
     }
 
     async withdraw (code, amount, address, tag = undefined, params = {}) {
+        [ tag, params ] = this.handleWithdrawTagAndParams (tag, params);
         await this.loadMarkets ();
         const currency = this.currency (code);
         const request = {
@@ -1046,7 +1065,7 @@ module.exports = class novadax extends Exchange {
         } else if (type === 'COIN_OUT') {
             type = 'withdraw';
         }
-        const amount = this.safeFloat (transaction, 'amount');
+        const amount = this.safeNumber (transaction, 'amount');
         const address = this.safeString (transaction, 'address');
         const tag = this.safeString (transaction, 'addressTag');
         const txid = this.safeString (transaction, 'txHash');

@@ -16,22 +16,22 @@ module.exports = class coinmarketcap extends Exchange {
             'version': 'v1',
             'countries': [ 'US' ],
             'has': {
-                'cancelOrder': false,
+                'cancelOrder': undefined,
                 'CORS': true,
-                'createLimitOrder': false,
-                'createMarketOrder': false,
-                'createOrder': false,
-                'editOrder': false,
-                'privateAPI': false,
-                'fetchBalance': false,
+                'createLimitOrder': undefined,
+                'createMarketOrder': undefined,
+                'createOrder': undefined,
+                'editOrder': undefined,
+                'fetchBalance': undefined,
                 'fetchCurrencies': true,
-                'fetchL2OrderBook': false,
+                'fetchL2OrderBook': undefined,
                 'fetchMarkets': true,
-                'fetchOHLCV': false,
-                'fetchOrderBook': false,
+                'fetchOHLCV': undefined,
+                'fetchOrderBook': undefined,
                 'fetchTicker': true,
                 'fetchTickers': true,
-                'fetchTrades': false,
+                'fetchTrades': undefined,
+                'privateAPI': undefined,
             },
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/51840849/87182086-1cd4cd00-c2ec-11ea-9ec4-d0cf2a2abf62.jpg',
@@ -208,16 +208,16 @@ module.exports = class coinmarketcap extends Exchange {
         if (timestamp === undefined) {
             timestamp = this.milliseconds ();
         }
-        const change = this.safeFloat (ticker, 'percent_change_24h');
+        const change = this.safeNumber (ticker, 'percent_change_24h');
         let last = undefined;
         let symbol = undefined;
         let volume = undefined;
         if (market !== undefined) {
             symbol = market['symbol'];
             const priceKey = 'price_' + market['quoteId'];
-            last = this.safeFloat (ticker, priceKey);
+            last = this.safeNumber (ticker, priceKey);
             const volumeKey = '24h_volume_' + market['quoteId'];
-            volume = this.safeFloat (ticker, volumeKey);
+            volume = this.safeNumber (ticker, volumeKey);
         }
         return {
             'symbol': symbol,
@@ -293,7 +293,6 @@ module.exports = class coinmarketcap extends Exchange {
             // todo: will need to rethink the fees
             // to add support for multiple withdrawal/deposit methods and
             // differentiated fees for each particular method
-            const precision = 8; // default precision, todo: fix "magic constants"
             const code = this.currencyCode (id, name);
             result[code] = {
                 'id': id,
@@ -301,16 +300,16 @@ module.exports = class coinmarketcap extends Exchange {
                 'info': currency,
                 'name': name,
                 'active': true,
-                'fee': undefined, // todo: redesign
-                'precision': precision,
+                'fee': undefined,
+                'precision': undefined,
                 'limits': {
                     'amount': {
-                        'min': Math.pow (10, -precision),
-                        'max': Math.pow (10, precision),
+                        'min': undefined,
+                        'max': undefined,
                     },
                     'price': {
-                        'min': Math.pow (10, -precision),
-                        'max': Math.pow (10, precision),
+                        'min': undefined,
+                        'max': undefined,
                     },
                     'cost': {
                         'min': undefined,
@@ -335,13 +334,13 @@ module.exports = class coinmarketcap extends Exchange {
         return { 'url': url, 'method': method, 'body': body, 'headers': headers };
     }
 
-    async request (path, api = 'public', method = 'GET', params = {}, headers = undefined, body = undefined) {
-        const response = await this.fetch2 (path, api, method, params, headers, body);
-        if ('error' in response) {
-            if (response['error']) {
-                throw new ExchangeError (this.id + ' ' + this.json (response));
-            }
+    handleErrors (httpCode, reason, url, method, headers, body, response, requestHeaders, requestBody) {
+        if (response === undefined) {
+            return;
         }
-        return response;
+        const error = this.safeValue (response, 'error', false);
+        if (error) {
+            throw new ExchangeError (this.id + ' ' + this.json (response));
+        }
     }
 };

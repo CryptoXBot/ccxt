@@ -26,6 +26,7 @@ from ccxt.base.errors import ExchangeNotAvailable
 from ccxt.base.errors import OnMaintenance
 from ccxt.base.errors import InvalidNonce
 from ccxt.base.decimal_to_precision import TICK_SIZE
+from ccxt.base.precise import Precise
 
 
 class gemini(Exchange):
@@ -39,27 +40,27 @@ class gemini(Exchange):
             'version': 'v1',
             'has': {
                 'cancelOrder': True,
-                'CORS': False,
+                'CORS': None,
                 'createDepositAddress': True,
-                'createMarketOrder': False,
+                'createMarketOrder': None,
                 'createOrder': True,
                 'fetchBalance': True,
-                'fetchBidsAsks': False,
-                'fetchClosedOrders': False,
-                'fetchDepositAddress': False,
-                'fetchDeposits': False,
+                'fetchBidsAsks': None,
+                'fetchClosedOrders': None,
+                'fetchDepositAddress': None,
+                'fetchDeposits': None,
                 'fetchMarkets': True,
                 'fetchMyTrades': True,
                 'fetchOHLCV': True,
                 'fetchOpenOrders': True,
                 'fetchOrder': True,
                 'fetchOrderBook': True,
-                'fetchOrders': False,
+                'fetchOrders': None,
                 'fetchTicker': True,
                 'fetchTickers': True,
                 'fetchTrades': True,
                 'fetchTransactions': True,
-                'fetchWithdrawals': False,
+                'fetchWithdrawals': None,
                 'withdraw': True,
             },
             'urls': {
@@ -110,6 +111,7 @@ class gemini(Exchange):
                 },
                 'private': {
                     'post': [
+                        'v1/account/list',
                         'v1/order/new',
                         'v1/order/cancel',
                         'v1/order/cancel/session',
@@ -236,16 +238,16 @@ class gemini(Exchange):
             # base = self.safe_currency_code(baseId)
             minAmountString = cells[1].replace('<td>', '')
             minAmountParts = minAmountString.split(' ')
-            minAmount = self.safe_float(minAmountParts, 0)
+            minAmount = self.safe_number(minAmountParts, 0)
             amountPrecisionString = cells[2].replace('<td>', '')
             amountPrecisionParts = amountPrecisionString.split(' ')
-            amountPrecision = self.safe_float(amountPrecisionParts, 0)
+            amountPrecision = self.safe_number(amountPrecisionParts, 0)
             idLength = len(marketId) - 0
             quoteId = marketId[idLength - 3:idLength]
             quote = self.safe_currency_code(quoteId)
             pricePrecisionString = cells[3].replace('<td>', '')
             pricePrecisionParts = pricePrecisionString.split(' ')
-            pricePrecision = self.safe_float(pricePrecisionParts, 0)
+            pricePrecision = self.safe_number(pricePrecisionParts, 0)
             baseId = marketId.replace(quoteId, '')
             base = self.safe_currency_code(baseId)
             symbol = base + '/' + quote
@@ -332,7 +334,7 @@ class gemini(Exchange):
             request['limit_bids'] = limit
             request['limit_asks'] = limit
         response = await self.publicGetV1BookSymbol(self.extend(request, params))
-        return self.parse_order_book(response, None, 'bids', 'asks', 'price', 'amount')
+        return self.parse_order_book(response, symbol, None, 'bids', 'asks', 'price', 'amount')
 
     async def fetch_ticker_v1(self, symbol, params={}):
         await self.load_markets()
@@ -459,54 +461,35 @@ class gemini(Exchange):
             quoteId = market['quoteId'].upper()
             base = market['base']
             quote = market['quote']
-        price = self.safe_float(ticker, 'price')
-        last = self.safe_float_2(ticker, 'last', 'close', price)
-        percentage = self.safe_float(ticker, 'percentChange24h')
-        change = None
-        open = self.safe_float(ticker, 'open')
-        average = None
-        if last is not None:
-            if open is not None:
-                change = last - open
-                if open != 0:
-                    percentage = change / open * 100
-                average = self.sum(last, open) / 2
-            elif percentage is not None:
-                change = last * percentage
-                if open is None:
-                    open = last - change
-                average = self.sum(last, open) / 2
-        baseVolume = self.safe_float(volume, baseId)
-        quoteVolume = self.safe_float(volume, quoteId)
+        price = self.safe_number(ticker, 'price')
+        last = self.safe_number_2(ticker, 'last', 'close', price)
+        percentage = self.safe_number(ticker, 'percentChange24h')
+        open = self.safe_number(ticker, 'open')
+        baseVolume = self.safe_number(volume, baseId)
+        quoteVolume = self.safe_number(volume, quoteId)
         vwap = self.vwap(baseVolume, quoteVolume)
-        return {
+        return self.safe_ticker({
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_float(ticker, 'high'),
-            'low': self.safe_float(ticker, 'low'),
-            'bid': self.safe_float(ticker, 'bid'),
+            'high': self.safe_number(ticker, 'high'),
+            'low': self.safe_number(ticker, 'low'),
+            'bid': self.safe_number(ticker, 'bid'),
             'bidVolume': None,
-            'ask': self.safe_float(ticker, 'ask'),
+            'ask': self.safe_number(ticker, 'ask'),
             'askVolume': None,
             'vwap': vwap,
             'open': open,
             'close': last,
             'last': last,
             'previousClose': None,  # previous day close
-            'change': change,
+            'change': None,
             'percentage': percentage,
-            'average': average,
+            'average': None,
             'baseVolume': baseVolume,
             'quoteVolume': quoteVolume,
             'info': ticker,
-        }
-
-    def parse_tickers(self, tickers, symbols=None):
-        result = []
-        for i in range(0, len(tickers)):
-            result.append(self.parse_ticker(tickers[i]))
-        return self.filter_by_array(result, 'symbol', symbols)
+        }, market)
 
     async def fetch_tickers(self, symbols=None, params={}):
         await self.load_markets()
@@ -547,15 +530,14 @@ class gemini(Exchange):
         feeCurrencyId = self.safe_string(trade, 'fee_currency')
         feeCurrencyCode = self.safe_currency_code(feeCurrencyId)
         fee = {
-            'cost': self.safe_float(trade, 'fee_amount'),
+            'cost': self.safe_number(trade, 'fee_amount'),
             'currency': feeCurrencyCode,
         }
-        price = self.safe_float(trade, 'price')
-        amount = self.safe_float(trade, 'amount')
-        cost = None
-        if price is not None:
-            if amount is not None:
-                cost = price * amount
+        priceString = self.safe_string(trade, 'price')
+        amountString = self.safe_string(trade, 'amount')
+        price = self.parse_number(priceString)
+        amount = self.parse_number(amountString)
+        cost = self.parse_number(Precise.string_mul(priceString, amountString))
         type = None
         side = self.safe_string_lower(trade, 'type')
         symbol = self.safe_symbol(None, market)
@@ -606,27 +588,23 @@ class gemini(Exchange):
             currencyId = self.safe_string(balance, 'currency')
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['free'] = self.safe_float(balance, 'available')
-            account['total'] = self.safe_float(balance, 'amount')
+            account['free'] = self.safe_string(balance, 'available')
+            account['total'] = self.safe_string(balance, 'amount')
             result[code] = account
         return self.parse_balance(result)
 
     def parse_order(self, order, market=None):
         timestamp = self.safe_integer(order, 'timestampms')
-        amount = self.safe_float(order, 'original_amount')
-        remaining = self.safe_float(order, 'remaining_amount')
-        filled = self.safe_float(order, 'executed_amount')
+        amount = self.safe_number(order, 'original_amount')
+        remaining = self.safe_number(order, 'remaining_amount')
+        filled = self.safe_number(order, 'executed_amount')
         status = 'closed'
         if order['is_live']:
             status = 'open'
         if order['is_cancelled']:
             status = 'canceled'
-        price = self.safe_float(order, 'price')
-        average = self.safe_float(order, 'avg_execution_price')
-        cost = None
-        if filled is not None:
-            if average is not None:
-                cost = filled * average
+        price = self.safe_number(order, 'price')
+        average = self.safe_number(order, 'avg_execution_price')
         type = self.safe_string(order, 'type')
         if type == 'exchange limit':
             type = 'limit'
@@ -640,7 +618,7 @@ class gemini(Exchange):
         id = self.safe_string(order, 'order_id')
         side = self.safe_string_lower(order, 'side')
         clientOrderId = self.safe_string(order, 'client_order_id')
-        return {
+        return self.safe_order({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,
@@ -656,13 +634,13 @@ class gemini(Exchange):
             'price': price,
             'stopPrice': None,
             'average': average,
-            'cost': cost,
+            'cost': None,
             'amount': amount,
             'filled': filled,
             'remaining': remaining,
             'fee': fee,
             'trades': None,
-        }
+        })
 
     async def fetch_order(self, id, symbol=None, params={}):
         await self.load_markets()
@@ -722,6 +700,7 @@ class gemini(Exchange):
         return self.parse_trades(response, market, since, limit)
 
     async def withdraw(self, code, amount, address, tag=None, params={}):
+        tag, params = self.handle_withdraw_tag_and_params(tag, params)
         self.check_address(address)
         await self.load_markets()
         currency = self.currency(code)
@@ -760,7 +739,7 @@ class gemini(Exchange):
         if transaction['status']:
             status = 'ok'
         fee = None
-        feeAmount = self.safe_float(transaction, 'feeAmount')
+        feeAmount = self.safe_number(transaction, 'feeAmount')
         if feeAmount is not None:
             fee = {
                 'cost': feeAmount,
@@ -775,7 +754,7 @@ class gemini(Exchange):
             'address': address,
             'tag': None,  # or is it defined?
             'type': type,  # direction of the transaction,('deposit' | 'withdraw')
-            'amount': self.safe_float(transaction, 'amount'),
+            'amount': self.safe_number(transaction, 'amount'),
             'currency': code,
             'status': status,
             'updated': None,
