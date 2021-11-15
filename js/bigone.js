@@ -199,6 +199,8 @@ module.exports = class bigone extends Exchange {
                 'quote': quote,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'type': 'spot',
+                'spot': true,
                 'active': true,
                 'precision': precision,
                 'limits': {
@@ -691,9 +693,10 @@ module.exports = class bigone extends Exchange {
         const marketId = this.safeString (order, 'asset_pair_name');
         const symbol = this.safeSymbol (marketId, market, '-');
         const timestamp = this.parse8601 (this.safeString (order, 'created_at'));
-        const price = this.safeNumber (order, 'price');
-        const amount = this.safeNumber (order, 'amount');
-        const filled = this.safeNumber (order, 'filled_amount');
+        const price = this.safeString (order, 'price');
+        const amount = this.safeString (order, 'amount');
+        const average = this.safeString (order, 'avg_deal_price');
+        const filled = this.safeString (order, 'filled_amount');
         const status = this.parseOrderStatus (this.safeString (order, 'state'));
         let side = this.safeString (order, 'side');
         if (side === 'BID') {
@@ -702,8 +705,7 @@ module.exports = class bigone extends Exchange {
             side = 'sell';
         }
         const lastTradeTimestamp = this.parse8601 (this.safeString (order, 'updated_at'));
-        const average = this.safeNumber (order, 'avg_deal_price');
-        return this.safeOrder ({
+        return this.safeOrder2 ({
             'info': order,
             'id': id,
             'clientOrderId': undefined,
@@ -725,7 +727,7 @@ module.exports = class bigone extends Exchange {
             'status': status,
             'fee': undefined,
             'trades': undefined,
-        });
+        }, market);
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
@@ -1019,6 +1021,7 @@ module.exports = class bigone extends Exchange {
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': undefined,
             'info': response,
         };
     }

@@ -26,7 +26,7 @@ module.exports = class gemini extends Exchange {
                 'fetchBalance': true,
                 'fetchBidsAsks': undefined,
                 'fetchClosedOrders': undefined,
-                'fetchDepositAddress': undefined,
+                'fetchDepositAddress': undefined, // TODO
                 'fetchDeposits': undefined,
                 'fetchMarkets': true,
                 'fetchMyTrades': true,
@@ -78,21 +78,23 @@ module.exports = class gemini extends Exchange {
                 'public': {
                     'get': [
                         'v1/symbols',
-                        'v1/pricefeed',
+                        'v1/symbols/details/{symbol}',
                         'v1/pubticker/{symbol}',
-                        'v1/book/{symbol}',
+                        'v2/ticker/{symbol}',
+                        'v2/candles/{symbol}/{timeframe}',
                         'v1/trades/{symbol}',
                         'v1/auction/{symbol}',
                         'v1/auction/{symbol}/history',
-                        'v2/candles/{symbol}/{timeframe}',
-                        'v2/ticker/{symbol}',
+                        'v1/pricefeed',
+                        'v1/book/{symbol}',
+                        'v1/earn/rates',
                     ],
                 },
                 'private': {
                     'post': [
-                        'v1/account/list',
                         'v1/order/new',
                         'v1/order/cancel',
+                        'v1/wrap/{symbol}',
                         'v1/order/cancel/session',
                         'v1/order/cancel/all',
                         'v1/order/status',
@@ -100,12 +102,30 @@ module.exports = class gemini extends Exchange {
                         'v1/mytrades',
                         'v1/notionalvolume',
                         'v1/tradevolume',
-                        'v1/transfers',
+                        'v1/clearing/new',
+                        'v1/clearing/status',
+                        'v1/clearing/cancel',
+                        'v1/clearing/confirm',
                         'v1/balances',
+                        'v1/notionalbalances/{currency}',
+                        'v1/transfers',
+                        'v1/addresses/{network}',
+                        'v1/deposit/{network}/newAddress',
                         'v1/deposit/{currency}/newAddress',
                         'v1/withdraw/{currency}',
+                        'v1/account/transfer/{currency}',
+                        'v1/payments/addbank',
+                        'v1/payments/methods',
+                        'v1/payments/sen/withdraw',
+                        'v1/balances/earn',
+                        'v1/earn/interest',
+                        'v1/approvedAddresses/{network}/request',
+                        'v1/approvedAddresses/account/{network}',
+                        'v1/approvedAddresses/{network}/remove',
+                        'v1/account',
+                        'v1/account/create',
+                        'v1/account/list',
                         'v1/heartbeat',
-                        'v1/transfers',
                     ],
                 },
             },
@@ -176,6 +196,26 @@ module.exports = class gemini extends Exchange {
             'options': {
                 'fetchMarketsMethod': 'fetch_markets_from_web',
                 'fetchTickerMethod': 'fetchTickerV1', // fetchTickerV1, fetchTickerV2, fetchTickerV1AndV2
+                'networkIds': {
+                    'bitcoin': 'BTC',
+                    'ethereum': 'ERC20',
+                    'bitcoincash': 'BCH',
+                    'litecoin': 'LTC',
+                    'zcash': 'ZEC',
+                    'filecoin': 'FIL',
+                    'dogecoin': 'DOGE',
+                    'tezos': 'XTZ',
+                },
+                'networks': {
+                    'BTC': 'bitcoin',
+                    'ERC20': 'ethereum',
+                    'BCH': 'bitcoincash',
+                    'LTC': 'litecoin',
+                    'ZEC': 'zcash',
+                    'FIL': 'filecoin',
+                    'DOGE': 'dogecoin',
+                    'XTZ': 'tezos',
+                },
             },
         });
     }
@@ -228,7 +268,8 @@ module.exports = class gemini extends Exchange {
             const amountPrecisionParts = amountPrecisionString.split (' ');
             const amountPrecision = this.safeNumber (amountPrecisionParts, 0);
             const idLength = marketId.length - 0;
-            const quoteId = marketId.slice (idLength - 3, idLength);
+            const startingIndex = idLength - 3;
+            const quoteId = marketId.slice (startingIndex, idLength);
             const quote = this.safeCurrencyCode (quoteId);
             const pricePrecisionString = cells[3].replace ('<td>', '');
             const pricePrecisionParts = pricePrecisionString.split (' ');
@@ -245,6 +286,8 @@ module.exports = class gemini extends Exchange {
                 'quote': quote,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'type': 'spot',
+                'spot': true,
                 'active': active,
                 'precision': {
                     'amount': amountPrecision,
@@ -600,9 +643,9 @@ module.exports = class gemini extends Exchange {
 
     parseOrder (order, market = undefined) {
         const timestamp = this.safeInteger (order, 'timestampms');
-        const amount = this.safeNumber (order, 'original_amount');
-        const remaining = this.safeNumber (order, 'remaining_amount');
-        const filled = this.safeNumber (order, 'executed_amount');
+        const amount = this.safeString (order, 'original_amount');
+        const remaining = this.safeString (order, 'remaining_amount');
+        const filled = this.safeString (order, 'executed_amount');
         let status = 'closed';
         if (order['is_live']) {
             status = 'open';
@@ -610,8 +653,8 @@ module.exports = class gemini extends Exchange {
         if (order['is_cancelled']) {
             status = 'canceled';
         }
-        const price = this.safeNumber (order, 'price');
-        const average = this.safeNumber (order, 'avg_execution_price');
+        const price = this.safeString (order, 'price');
+        const average = this.safeString (order, 'avg_execution_price');
         let type = this.safeString (order, 'type');
         if (type === 'exchange limit') {
             type = 'limit';
@@ -626,7 +669,7 @@ module.exports = class gemini extends Exchange {
         const id = this.safeString (order, 'order_id');
         const side = this.safeStringLower (order, 'side');
         const clientOrderId = this.safeString (order, 'client_order_id');
-        return this.safeOrder ({
+        return this.safeOrder2 ({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,
@@ -648,7 +691,7 @@ module.exports = class gemini extends Exchange {
             'remaining': remaining,
             'fee': fee,
             'trades': undefined,
-        });
+        }, market);
     }
 
     async fetchOrder (id, symbol = undefined, params = {}) {
@@ -788,11 +831,52 @@ module.exports = class gemini extends Exchange {
         };
     }
 
+    parseDepositAddress (depositAddress, currency = undefined) {
+        //
+        //      {
+        //          address: "0xed6494Fe7c1E56d1bd6136e89268C51E32d9708B",
+        //          timestamp: "1636813923098",
+        //          addressVersion: "eV1"                                         }
+        //      }
+        //
+        const address = this.safeString (depositAddress, 'address');
+        return {
+            'currency': currency,
+            'network': undefined,
+            'address': address,
+            'tag': undefined,
+            'info': depositAddress,
+        };
+    }
+
+    async fetchDepositAddressesByNetwork (code, params = {}) {
+        await this.loadMarkets ();
+        const network = this.safeString (params, 'network');
+        if (network === undefined) {
+            throw new ArgumentsRequired (this.id + 'fetchDepositAddressesByNetwork() requires a network parameter');
+        }
+        params = this.omit (params, 'network');
+        const networks = this.safeValue (this.options, 'networks', {});
+        const networkId = this.safeString (networks, network, network);
+        const networkIds = this.safeValue (this.options, 'networkIds', {});
+        const networkCode = this.safeString (networkIds, networkId, network);
+        const request = {
+            'network': networkId,
+        };
+        const response = await this.privatePostV1AddressesNetwork (this.extend (request, params));
+        const results = this.parseDepositAddresses (response, [code], false, { 'network': networkCode, 'currency': code });
+        return this.groupBy (results, 'network');
+    }
+
     sign (path, api = 'public', method = 'GET', params = {}, headers = undefined, body = undefined) {
         let url = '/' + this.implodeParams (path, params);
         const query = this.omit (params, this.extractParams (path));
         if (api === 'private') {
             this.checkRequiredCredentials ();
+            const apiKey = this.apiKey;
+            if (apiKey.indexOf ('account') < 0) {
+                throw new AuthenticationError (this.id + ' sign() requires an account-key, master-keys are not-supported');
+            }
             const nonce = this.nonce ();
             const request = this.extend ({
                 'request': url,

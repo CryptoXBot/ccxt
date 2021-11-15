@@ -173,6 +173,8 @@ class zaif extends Exchange {
                 'quote' => $quote,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
+                'type' => 'spot',
+                'spot' => true,
                 'active' => true, // can trade or not
                 'precision' => $precision,
                 'taker' => $taker,
@@ -360,10 +362,10 @@ class zaif extends Exchange {
         $timestamp = $this->safe_timestamp($order, 'timestamp');
         $marketId = $this->safe_string($order, 'currency_pair');
         $symbol = $this->safe_symbol($marketId, $market, '_');
-        $price = $this->safe_number($order, 'price');
-        $amount = $this->safe_number($order, 'amount');
+        $price = $this->safe_string($order, 'price');
+        $amount = $this->safe_string($order, 'amount');
         $id = $this->safe_string($order, 'id');
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'id' => $id,
             'clientOrderId' => null,
             'timestamp' => $timestamp,
@@ -385,7 +387,7 @@ class zaif extends Exchange {
             'fee' => null,
             'info' => $order,
             'average' => null,
-        ));
+        ), $market);
     }
 
     public function fetch_open_orders($symbol = null, $since = null, $limit = null, $params = array ()) {

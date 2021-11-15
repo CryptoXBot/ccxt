@@ -218,6 +218,7 @@ class poloniex extends Exchange {
                 'broad' => array(
                     'Total must be at least' => '\\ccxt\\InvalidOrder', // array("error":"Total must be at least 0.0001.")
                     'This account is frozen.' => '\\ccxt\\AccountSuspended',
+                    'This account is locked.' => '\\ccxt\\AccountSuspended', // array("error":"This account is locked.")
                     'Not enough' => '\\ccxt\\InsufficientFunds',
                     'Nonce must be greater' => '\\ccxt\\InvalidNonce',
                     'You have already called cancelOrder or moveOrder on this order.' => '\\ccxt\\CancelPending',
@@ -312,6 +313,11 @@ class poloniex extends Exchange {
             $isFrozen = $this->safe_string($market, 'isFrozen');
             $active = ($isFrozen !== '1');
             $numericId = $this->safe_integer($market, 'id');
+            // these are known defaults
+            $precision = array(
+                'price' => 8,
+                'amount' => 8,
+            );
             $result[] = array(
                 'id' => $id,
                 'numericId' => $numericId,
@@ -320,7 +326,10 @@ class poloniex extends Exchange {
                 'quoteId' => $quoteId,
                 'base' => $base,
                 'quote' => $quote,
+                'type' => 'spot',
+                'spot' => true,
                 'active' => $active,
+                'precision' => $precision,
                 'limits' => $limits,
                 'info' => $market,
             );
@@ -1284,6 +1293,7 @@ class poloniex extends Exchange {
             'currency' => $code,
             'address' => $address,
             'tag' => $tag,
+            'network' => null,
             'info' => $response,
         );
     }

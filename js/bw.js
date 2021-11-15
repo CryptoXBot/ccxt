@@ -189,7 +189,6 @@ module.exports = class bw extends Exchange {
             const fee = this.safeNumber (market, 'defaultFee');
             result.push ({
                 'id': id,
-                'active': active,
                 'numericId': numericId,
                 'symbol': symbol,
                 'base': base,
@@ -198,6 +197,9 @@ module.exports = class bw extends Exchange {
                 'quoteId': quoteId,
                 'baseNumericId': baseNumericId,
                 'quoteNumericId': quoteNumericId,
+                'type': 'spot',
+                'spot': true,
+                'active': active,
                 'maker': fee,
                 'taker': fee,
                 'info': market,
@@ -723,13 +725,13 @@ module.exports = class bw extends Exchange {
         } else if (side === '1') {
             side = 'buy';
         }
-        const amount = this.safeNumber (order, 'amount');
-        const price = this.safeNumber (order, 'price');
-        const filled = this.safeNumber (order, 'completeAmount');
-        const remaining = this.safeNumber2 (order, 'availabelAmount', 'availableAmount'); // typo in the docs or in the API, availabel vs available
-        const cost = this.safeNumber (order, 'totalMoney');
+        const amount = this.safeString (order, 'amount');
+        const price = this.safeString (order, 'price');
+        const filled = this.safeString (order, 'completeAmount');
+        const remaining = this.safeString2 (order, 'availabelAmount', 'availableAmount'); // typo in the docs or in the API, availabel vs available
+        const cost = this.safeString (order, 'totalMoney');
         const status = this.parseOrderStatus (this.safeString (order, 'status'));
-        return this.safeOrder ({
+        return this.safeOrder2 ({
             'info': order,
             'id': this.safeString (order, 'entrustId'),
             'clientOrderId': undefined,
@@ -751,7 +753,7 @@ module.exports = class bw extends Exchange {
             'status': status,
             'fee': undefined,
             'trades': undefined,
-        });
+        }, market);
     }
 
     async fetchOrder (id, symbol = undefined, params = {}) {
@@ -994,6 +996,7 @@ module.exports = class bw extends Exchange {
             'currency': code,
             'address': this.checkAddress (address),
             'tag': tag,
+            'network': undefined,
             'info': response,
         };
     }

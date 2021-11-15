@@ -252,6 +252,7 @@ module.exports = class ascendex extends Exchange {
                     '300011': InsufficientFunds, // INVALID_BALANCE No enough account or asset balance for the trading
                     '300012': BadSymbol, // INVALID_PRODUCT Not a valid product supported by exchange
                     '300013': InvalidOrder, // INVALID_BATCH_ORDER Some or all orders are invalid in batch order request
+                    '300014': InvalidOrder, // {"code":300014,"message":"Order price doesn't conform to the required tick size: 0.1","reason":"TICK_SIZE_VIOLATION"}
                     '300020': InvalidOrder, // TRADING_RESTRICTED There is some trading restriction on account or asset
                     '300021': InvalidOrder, // TRADING_DISABLED Trading is disabled on account or asset
                     '300031': InvalidOrder, // NO_MARKET_PRICE No market price for market type order trading
@@ -525,7 +526,7 @@ module.exports = class ascendex extends Exchange {
         let accountGroup = this.safeString (this.options, 'account-group');
         let response = undefined;
         if (accountGroup === undefined) {
-            response = await this.privateGetInfo (params);
+            response = await this.v1PrivateGetInfo (params);
             //
             //     {
             //         "code":0,
@@ -996,10 +997,10 @@ module.exports = class ascendex extends Exchange {
         const symbol = this.safeSymbol (marketId, market, '/');
         const timestamp = this.safeInteger2 (order, 'timestamp', 'sendingTime');
         const lastTradeTimestamp = this.safeInteger (order, 'lastExecTime');
-        const price = this.safeNumber (order, 'price');
-        const amount = this.safeNumber (order, 'orderQty');
-        const average = this.safeNumber (order, 'avgPx');
-        const filled = this.safeNumber2 (order, 'cumFilledQty', 'cumQty');
+        const price = this.safeString (order, 'price');
+        const amount = this.safeString (order, 'orderQty');
+        const average = this.safeString (order, 'avgPx');
+        const filled = this.safeString2 (order, 'cumFilledQty', 'cumQty');
         const id = this.safeString (order, 'orderId');
         let clientOrderId = this.safeString (order, 'id');
         if (clientOrderId !== undefined) {
@@ -1020,10 +1021,10 @@ module.exports = class ascendex extends Exchange {
             };
         }
         const stopPrice = this.safeNumber (order, 'stopPrice');
-        return this.safeOrder ({
+        return this.safeOrder2 ({
             'info': order,
             'id': id,
-            'clientOrderId': undefined,
+            'clientOrderId': clientOrderId,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
             'lastTradeTimestamp': lastTradeTimestamp,
@@ -1042,7 +1043,7 @@ module.exports = class ascendex extends Exchange {
             'status': status,
             'fee': fee,
             'trades': undefined,
-        });
+        }, market);
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
@@ -1451,6 +1452,7 @@ module.exports = class ascendex extends Exchange {
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': undefined, // TODO: parse network
             'info': depositAddress,
         };
     }
@@ -1684,7 +1686,7 @@ module.exports = class ascendex extends Exchange {
         return await this.v2PrivateAccountGroupPostFuturesLeverage (this.extend (request, params));
     }
 
-    async setMarginMode (symbol, marginType = '', params = {}) {
+    async setMarginMode (marginType, symbol = undefined, params = {}) {
         if (marginType !== 'isolated' && marginType !== 'crossed') {
             throw new BadRequest (this.id + ' setMarginMode() marginType argument should be isolated or crossed');
         }
@@ -1729,6 +1731,10 @@ module.exports = class ascendex extends Exchange {
         url += '/' + request;
         if ((version === 'v1') && (request === 'cash/balance') || (request === 'margin/balance')) {
             request = 'balance';
+        }
+        if (request.indexOf ('subuser') >= 0) {
+            const parts = request.split ('/');
+            request = parts[2];
         }
         query = this.omit (query, this.extractParams (path));
         if (access === 'public') {

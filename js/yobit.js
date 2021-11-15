@@ -112,6 +112,7 @@ module.exports = class yobit extends Exchange {
                 'DIRT': 'DIRTY',
                 'DROP': 'FaucetCoin',
                 'DSH': 'DASH',
+                'EGG': 'EggCoin',
                 'EKO': 'EkoCoin',
                 'ENTER': 'ENTRC',
                 'EPC': 'ExperienceCoin',
@@ -120,6 +121,7 @@ module.exports = class yobit extends Exchange {
                 'EXT': 'LifeExtension',
                 'FUND': 'FUNDChains',
                 'FUNK': 'FUNKCoin',
+                'FX': 'FCoin',
                 'GCC': 'GlobalCryptocurrency',
                 'GEN': 'Genstake',
                 'GENE': 'Genesiscoin',
@@ -154,6 +156,7 @@ module.exports = class yobit extends Exchange {
                 'PIVX': 'Darknet',
                 'PRS': 'PRE',
                 'PUTIN': 'PutinCoin',
+                'SPACE': 'Spacecoin',
                 'STK': 'StakeCoin',
                 'SUB': 'Subscriptio',
                 'PAY': 'EPAY',
@@ -163,6 +166,8 @@ module.exports = class yobit extends Exchange {
                 'REP': 'Republicoin',
                 'RUR': 'RUB',
                 'SBTC': 'Super Bitcoin',
+                'SOLO': 'SoloCoin',
+                'SUPER': 'SuperCoin',
                 'TTC': 'TittieCoin',
                 'UNI': 'Universe',
                 'UST': 'Uservice',
@@ -326,6 +331,8 @@ module.exports = class yobit extends Exchange {
                 'quote': quote,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'type': 'spot',
+                'spot': true,
                 'active': active,
                 'taker': takerFee,
                 'maker': makerFee,
@@ -382,7 +389,7 @@ module.exports = class yobit extends Exchange {
         for (let i = 0; i < ids.length; i++) {
             const id = ids[i];
             const symbol = this.safeSymbol (id);
-            result[symbol] = this.parseOrderBook (response[id]);
+            result[symbol] = this.parseOrderBook (response[id], symbol);
         }
         return result;
     }
@@ -609,13 +616,13 @@ module.exports = class yobit extends Exchange {
         const timestamp = this.safeTimestamp (order, 'timestamp_created');
         const marketId = this.safeString (order, 'pair');
         const symbol = this.safeSymbol (marketId, market);
-        const remaining = this.safeNumber (order, 'amount');
-        const amount = this.safeNumber (order, 'start_amount');
-        const price = this.safeNumber (order, 'rate');
+        const remaining = this.safeString (order, 'amount');
+        const amount = this.safeString (order, 'start_amount');
+        const price = this.safeString (order, 'rate');
         const fee = undefined;
         const type = 'limit';
         const side = this.safeString (order, 'type');
-        return this.safeOrder ({
+        return this.safeOrder2 ({
             'info': order,
             'id': id,
             'clientOrderId': undefined,
@@ -637,7 +644,7 @@ module.exports = class yobit extends Exchange {
             'fee': fee,
             'average': undefined,
             'trades': undefined,
-        });
+        }, market);
     }
 
     async fetchOrder (id, symbol = undefined, params = {}) {
@@ -733,6 +740,7 @@ module.exports = class yobit extends Exchange {
             'currency': code,
             'address': address,
             'tag': undefined,
+            'network': undefined,
             'info': response,
         };
     }

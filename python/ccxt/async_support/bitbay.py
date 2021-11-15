@@ -292,6 +292,8 @@ class bitbay(Exchange):
                 'baseId': baseId,
                 'quoteId': quoteId,
                 'precision': precision,
+                'type': 'spot',
+                'spot': True,
                 'active': None,
                 'maker': maker,
                 'taker': taker,
@@ -342,10 +344,10 @@ class bitbay(Exchange):
         marketId = self.safe_string(order, 'market')
         symbol = self.safe_symbol(marketId, market, '-')
         timestamp = self.safe_integer(order, 'time')
-        amount = self.safe_number(order, 'startAmount')
-        remaining = self.safe_number(order, 'currentAmount')
+        amount = self.safe_string(order, 'startAmount')
+        remaining = self.safe_string(order, 'currentAmount')
         postOnly = self.safe_value(order, 'postOnly')
-        return self.safe_order({
+        return self.safe_order2({
             'id': self.safe_string(order, 'id'),
             'clientOrderId': None,
             'info': order,
@@ -358,7 +360,7 @@ class bitbay(Exchange):
             'timeInForce': None,
             'postOnly': postOnly,
             'side': self.safe_string_lower(order, 'offerType'),
-            'price': self.safe_number(order, 'rate'),
+            'price': self.safe_string(order, 'rate'),
             'stopPrice': None,
             'amount': amount,
             'cost': None,
@@ -367,7 +369,7 @@ class bitbay(Exchange):
             'average': None,
             'fee': None,
             'trades': None,
-        })
+        }, market)
 
     async def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         await self.load_markets()

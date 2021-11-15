@@ -382,16 +382,21 @@ module.exports = class phemex extends Exchange {
         const quoteId = this.safeString (market, 'quoteCurrency');
         const base = this.safeCurrencyCode (baseId);
         const quote = this.safeCurrencyCode (quoteId);
-        const symbol = base + '/' + quote;
         const type = this.safeStringLower (market, 'type');
         let inverse = false;
         const spot = false;
         const swap = true;
-        const settlementCurrencyId = this.safeString (market, 'settlementCurrency');
+        const settlementCurrencyId = this.safeString (market, 'settleCurrency');
         if (settlementCurrencyId !== quoteId) {
             inverse = true;
         }
         const linear = !inverse;
+        let symbol = undefined;
+        if (linear) {
+            symbol = base + '/' + quote + ':' + quote;
+        } else {
+            symbol = base + '/' + quote + ':' + base;
+        }
         const precision = {
             'amount': this.safeNumber (market, 'lotSize'),
             'price': this.safeNumber (market, 'tickSize'),
@@ -421,6 +426,7 @@ module.exports = class phemex extends Exchange {
         };
         const status = this.safeString (market, 'status');
         const active = status === 'Listed';
+        const contractSize = this.safeString (market, 'contractSize');
         return {
             'id': id,
             'symbol': symbol,
@@ -441,6 +447,7 @@ module.exports = class phemex extends Exchange {
             'valueScale': valueScale,
             'ratioScale': ratioScale,
             'precision': precision,
+            'contractSize': contractSize,
             'limits': limits,
         };
     }
@@ -527,6 +534,7 @@ module.exports = class phemex extends Exchange {
             'priceScale': 8,
             'valueScale': 8,
             'ratioScale': 8,
+            'contractSize': undefined,
             'limits': limits,
         };
     }
@@ -2234,6 +2242,7 @@ module.exports = class phemex extends Exchange {
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': undefined,
             'info': response,
         };
     }

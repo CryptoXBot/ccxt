@@ -108,11 +108,13 @@ class bitforex(Exchange):
                 },
             },
             'commonCurrencies': {
+                'BKC': 'Bank Coin',
                 'CAPP': 'Crypto Application Token',
                 'CREDIT': 'TerraCredit',
                 'CTC': 'Culture Ticket Chain',
                 'IQ': 'IQ.Cash',
                 'MIR': 'MIR COIN',
+                'NOIA': 'METANOIA',
                 'TON': 'To The Moon',
             },
             'exceptions': {
@@ -168,6 +170,8 @@ class bitforex(Exchange):
                 'quote': quote,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'type': 'spot',
+                'spot': True,
                 'active': active,
                 'precision': precision,
                 'limits': limits,
@@ -348,10 +352,10 @@ class bitforex(Exchange):
         sideId = self.safe_integer(order, 'tradeType')
         side = self.parse_side(sideId)
         type = None
-        price = self.safe_number(order, 'orderPrice')
-        average = self.safe_number(order, 'avgPrice')
-        amount = self.safe_number(order, 'orderAmount')
-        filled = self.safe_number(order, 'dealAmount')
+        price = self.safe_string(order, 'orderPrice')
+        average = self.safe_string(order, 'avgPrice')
+        amount = self.safe_string(order, 'orderAmount')
+        filled = self.safe_string(order, 'dealAmount')
         status = self.parse_order_status(self.safe_string(order, 'orderState'))
         feeSide = 'base' if (side == 'buy') else 'quote'
         feeCurrency = market[feeSide]
@@ -359,7 +363,7 @@ class bitforex(Exchange):
             'cost': self.safe_number(order, 'tradeFee'),
             'currency': feeCurrency,
         }
-        return self.safe_order({
+        return self.safe_order2({
             'info': order,
             'id': id,
             'clientOrderId': None,
@@ -381,7 +385,7 @@ class bitforex(Exchange):
             'status': status,
             'fee': fee,
             'trades': None,
-        })
+        }, market)
 
     def fetch_order(self, id, symbol=None, params={}):
         self.load_markets()

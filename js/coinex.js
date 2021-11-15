@@ -244,6 +244,8 @@ module.exports = class coinex extends Exchange {
                 'quote': quote,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'type': 'spot',
+                'spot': true,
                 'active': active,
                 'taker': this.safeNumber (market, 'taker_fee_rate'),
                 'maker': this.safeNumber (market, 'maker_fee_rate'),
@@ -522,11 +524,12 @@ module.exports = class coinex extends Exchange {
         //     }
         //
         const timestamp = this.safeTimestamp (order, 'create_time');
-        const price = this.safeNumber (order, 'price');
-        const cost = this.safeNumber (order, 'deal_money');
-        const amount = this.safeNumber (order, 'amount');
-        const filled = this.safeNumber (order, 'deal_amount');
-        const average = this.safeNumber (order, 'avg_price');
+        const price = this.safeString (order, 'price');
+        const cost = this.safeString (order, 'deal_money');
+        const amount = this.safeString (order, 'amount');
+        const filled = this.safeString (order, 'deal_amount');
+        const average = this.safeString (order, 'avg_price');
+        const remaining = this.safeString (order, 'left');
         let symbol = undefined;
         const marketId = this.safeString (order, 'market');
         market = this.safeMarket (marketId, market);
@@ -538,11 +541,10 @@ module.exports = class coinex extends Exchange {
                 feeCurrency = market['quote'];
             }
         }
-        const remaining = this.safeNumber (order, 'left');
         const status = this.parseOrderStatus (this.safeString (order, 'status'));
         const type = this.safeString (order, 'order_type');
         const side = this.safeString (order, 'type');
-        return this.safeOrder ({
+        return this.safeOrder2 ({
             'id': this.safeString (order, 'id'),
             'clientOrderId': undefined,
             'datetime': this.iso8601 (timestamp),
@@ -567,7 +569,7 @@ module.exports = class coinex extends Exchange {
                 'cost': this.safeNumber (order, 'deal_fee'),
             },
             'info': order,
-        });
+        }, market);
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {

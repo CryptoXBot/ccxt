@@ -220,6 +220,8 @@ class bitso extends Exchange {
                 'info' => $market,
                 'limits' => $limits,
                 'precision' => $precision,
+                'type' => 'spot',
+                'spot' => true,
                 'active' => null,
             ), $fee);
         }
@@ -448,11 +450,11 @@ class bitso extends Exchange {
         $symbol = $this->safe_symbol($marketId, $market, '_');
         $orderType = $this->safe_string($order, 'type');
         $timestamp = $this->parse8601($this->safe_string($order, 'created_at'));
-        $price = $this->safe_number($order, 'price');
-        $amount = $this->safe_number($order, 'original_amount');
-        $remaining = $this->safe_number($order, 'unfilled_amount');
+        $price = $this->safe_string($order, 'price');
+        $amount = $this->safe_string($order, 'original_amount');
+        $remaining = $this->safe_string($order, 'unfilled_amount');
         $clientOrderId = $this->safe_string($order, 'client_id');
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => $clientOrderId,
@@ -474,7 +476,7 @@ class bitso extends Exchange {
             'fee' => null,
             'average' => null,
             'trades' => null,
-        ));
+        ), $market);
     }
 
     public function fetch_open_orders($symbol = null, $since = null, $limit = 25, $params = array ()) {
@@ -550,6 +552,7 @@ class bitso extends Exchange {
             'currency' => $code,
             'address' => $address,
             'tag' => $tag,
+            'network' => null,
             'info' => $response,
         );
     }

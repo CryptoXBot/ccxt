@@ -224,7 +224,9 @@ class bittrex extends Exchange {
                 // 'createOrderMethod' => 'create_order_v1',
             ),
             'commonCurrencies' => array(
+                'BIFI' => 'Bifrost Finance',
                 'MER' => 'Mercury', // conflict with Mercurial Finance
+                'PROS' => 'Pros.Finance',
                 'REPV2' => 'REP',
                 'TON' => 'Tokamak Network',
             ),
@@ -287,6 +289,8 @@ class bittrex extends Exchange {
                 'quote' => $quote,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
+                'type' => 'spot',
+                'spot' => true,
                 'active' => $active,
                 'info' => $market,
                 'precision' => $precision,
@@ -302,6 +306,9 @@ class bittrex extends Exchange {
                     'cost' => array(
                         'min' => null,
                         'max' => null,
+                    ),
+                    'leverage' => array(
+                        'max' => 1,
                     ),
                 ),
             );
@@ -672,7 +679,7 @@ class bittrex extends Exchange {
         if ($since !== null) {
             $now = $this->milliseconds();
             $difference = abs($now - $since);
-            $sinceDate = $this->ymd($since);
+            $sinceDate = $this->yyyymmdd($since);
             $parts = explode('-', $sinceDate);
             $sinceYear = $this->safe_integer($parts, 0);
             $sinceMonth = $this->safe_integer($parts, 1);
@@ -1034,15 +1041,15 @@ class bittrex extends Exchange {
         }
         $timestamp = $this->parse8601($createdAt);
         $type = $this->safe_string_lower($order, 'type');
-        $quantity = $this->safe_number($order, 'quantity');
-        $limit = $this->safe_number($order, 'limit');
-        $fillQuantity = $this->safe_number($order, 'fillQuantity');
+        $quantity = $this->safe_string($order, 'quantity');
+        $limit = $this->safe_string($order, 'limit');
+        $fillQuantity = $this->safe_string($order, 'fillQuantity');
         $commission = $this->safe_number($order, 'commission');
-        $proceeds = $this->safe_number($order, 'proceeds');
+        $proceeds = $this->safe_string($order, 'proceeds');
         $status = $this->safe_string_lower($order, 'status');
         $timeInForce = $this->parse_time_in_force($this->safe_string($order, 'timeInForce'));
         $postOnly = ($timeInForce === 'PO');
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'id' => $this->safe_string($order, 'id'),
             'clientOrderId' => $clientOrderId,
             'timestamp' => $timestamp,
@@ -1067,7 +1074,7 @@ class bittrex extends Exchange {
             ),
             'info' => $order,
             'trades' => null,
-        ));
+        ), $market);
     }
 
     public function parse_orders($orders, $market = null, $since = null, $limit = null, $params = array ()) {
@@ -1253,6 +1260,7 @@ class bittrex extends Exchange {
             'currency' => $code,
             'address' => $address,
             'tag' => $tag,
+            'network' => null,
             'info' => $response,
         );
     }

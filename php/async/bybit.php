@@ -32,6 +32,7 @@ class bybit extends Exchange {
                 'fetchClosedOrders' => true,
                 'fetchDeposits' => true,
                 'fetchFundingRate' => true,
+                'fetchFundingRateHistory' => false,
                 'fetchIndexOHLCV' => true,
                 'fetchLedger' => true,
                 'fetchMarkets' => true,
@@ -276,6 +277,7 @@ class bybit extends Exchange {
             ),
             'exceptions' => array(
                 'exact' => array(
+                    '-2015' => '\\ccxt\\AuthenticationError', // Invalid API-key, IP, or permissions for action.
                     '10001' => '\\ccxt\\BadRequest', // parameter error
                     '10002' => '\\ccxt\\InvalidNonce', // request expired, check your timestamp and recv_window
                     '10003' => '\\ccxt\\AuthenticationError', // Invalid apikey
@@ -519,6 +521,7 @@ class bybit extends Exchange {
                 'amount' => $this->safe_number($lotSizeFilter, 'qty_step'),
                 'price' => $this->safe_number($priceFilter, 'tick_size'),
             );
+            $leverage = $this->safe_value($market, 'leverage_filter', array());
             $status = $this->safe_string($market, 'status');
             $active = null;
             if ($status !== null) {
@@ -556,6 +559,9 @@ class bybit extends Exchange {
                     'cost' => array(
                         'min' => null,
                         'max' => null,
+                    ),
+                    'leverage' => array(
+                        'max' => $this->safe_number($leverage, 'max_leverage', 1),
                     ),
                 ),
                 'info' => $market,
@@ -868,7 +874,7 @@ class bybit extends Exchange {
         $request = array(
             'symbol' => $market['id'],
         );
-        $method = 'v2PublicGetFundingPrevFundingRate';
+        $method = $market['linear'] ? 'publicLinearGetFundingPrevFundingRate' : 'v2PublicGetFundingPrevFundingRate';
         $response = yield $this->$method (array_merge($request, $params));
         //
         // {
@@ -888,18 +894,24 @@ class bybit extends Exchange {
         // }
         //
         $result = $this->safe_value($response, 'result');
-        $lastFundingRate = $this->safe_number($result, 'funding_rate');
-        $lastFundingTime = $this->safe_integer($result, 'funding_rate_timestamp') * 1000;
-        $nextFundingTime = $lastFundingTime . (8 * 3600000);
+        $nextFundingRate = $this->safe_number($result, 'funding_rate');
+        $previousFundingTime = $this->safe_integer($result, 'funding_rate_timestamp') * 1000;
+        $nextFundingTime = $previousFundingTime . (8 * 3600000);
         $currentTime = $this->milliseconds();
         return array(
+            'info' => $result,
             'symbol' => $symbol,
+            'markPrice' => null,
+            'indexPrice' => null,
+            'interestRate' => null,
+            'estimatedSettlePrice' => null,
             'timestamp' => $currentTime,
             'datetime' => $this->iso8601($currentTime),
-            'lastFundingRate' => $lastFundingRate,
-            'lastFundingTimestamp' => $lastFundingTime,
+            'previousFundingRate' => null,
+            'nextFundingRate' => $nextFundingRate,
+            'previousFundingTimestamp' => $previousFundingTime,
             'nextFundingTimestamp' => $nextFundingTime,
-            'lastFundingDatetime' => $this->iso8601($lastFundingTime),
+            'previousFundingDatetime' => $this->iso8601($previousFundingTime),
             'nextFundingDatetime' => $this->iso8601($nextFundingTime),
         );
     }
@@ -1298,15 +1310,12 @@ class bybit extends Exchange {
         $timestamp = $this->parse8601($this->safe_string($order, 'created_at'));
         $id = $this->safe_string_2($order, 'order_id', 'stop_order_id');
         $type = $this->safe_string_lower($order, 'order_type');
-        $price = $this->safe_number($order, 'price');
-        if ($price === 0.0) {
-            $price = null;
-        }
-        $average = $this->safe_number($order, 'average_price');
-        $amount = $this->safe_number($order, 'qty');
-        $cost = $this->safe_number($order, 'cum_exec_value');
-        $filled = $this->safe_number($order, 'cum_exec_qty');
-        $remaining = $this->safe_number($order, 'leaves_qty');
+        $price = $this->safe_string($order, 'price');
+        $average = $this->safe_string($order, 'average_price');
+        $amount = $this->safe_string($order, 'qty');
+        $cost = $this->safe_string($order, 'cum_exec_value');
+        $filled = $this->safe_string($order, 'cum_exec_qty');
+        $remaining = $this->safe_string($order, 'leaves_qty');
         $marketTypes = $this->safe_value($this->options, 'marketTypes', array());
         $marketType = $this->safe_string($marketTypes, $symbol);
         if ($market !== null) {
@@ -1322,10 +1331,10 @@ class bybit extends Exchange {
         }
         $status = $this->parse_order_status($this->safe_string_2($order, 'order_status', 'stop_order_status'));
         $side = $this->safe_string_lower($order, 'side');
-        $feeCost = $this->safe_number($order, 'cum_exec_fee');
+        $feeCostString = $this->safe_string($order, 'cum_exec_fee');
+        $feeCost = $this->parse_number(Precise::string_abs($feeCostString));
         $fee = null;
         if ($feeCost !== null) {
-            $feeCost = abs($feeCost);
             $fee = array(
                 'cost' => $feeCost,
                 'currency' => $feeCurrency,
@@ -1338,7 +1347,7 @@ class bybit extends Exchange {
         $timeInForce = $this->parse_time_in_force($this->safe_string($order, 'time_in_force'));
         $stopPrice = $this->safe_number_2($order, 'trigger_price', 'stop_px');
         $postOnly = ($timeInForce === 'PO');
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => $clientOrderId,
@@ -1360,7 +1369,7 @@ class bybit extends Exchange {
             'status' => $status,
             'fee' => $fee,
             'trades' => null,
-        ));
+        ), $market);
     }
 
     public function fetch_order($id, $symbol = null, $params = array ()) {
@@ -2156,7 +2165,7 @@ class bybit extends Exchange {
             $request['coin'] = $currency['id'];
         }
         if ($since !== null) {
-            $request['start_date'] = $this->ymd($since);
+            $request['start_date'] = $this->yyyymmdd($since);
         }
         if ($limit !== null) {
             $request['limit'] = $limit;
@@ -2212,7 +2221,7 @@ class bybit extends Exchange {
             $request['coin'] = $currency['id'];
         }
         if ($since !== null) {
-            $request['start_date'] = $this->ymd($since);
+            $request['start_date'] = $this->yyyymmdd($since);
         }
         if ($limit !== null) {
             $request['limit'] = $limit;
@@ -2352,7 +2361,7 @@ class bybit extends Exchange {
             $request['coin'] = $currency['id'];
         }
         if ($since !== null) {
-            $request['start_date'] = $this->ymd($since);
+            $request['start_date'] = $this->yyyymmdd($since);
         }
         if ($limit !== null) {
             $request['limit'] = $limit;
@@ -2566,7 +2575,7 @@ class bybit extends Exchange {
         }
     }
 
-    public function set_margin_mode($symbol, $marginType, $params = array ()) {
+    public function set_margin_mode($marginType, $symbol = null, $params = array ()) {
         //
         // {
         //     "ret_code" => 0,
@@ -2614,7 +2623,7 @@ class bybit extends Exchange {
         return yield $this->$method (array_merge($request, $params));
     }
 
-    public function set_leverage($leverage = null, $symbol = null, $params = array ()) {
+    public function set_leverage($leverage, $symbol = null, $params = array ()) {
         if ($symbol === null) {
             throw new ArgumentsRequired($this->id . ' setLeverage() requires a $symbol argument');
         }

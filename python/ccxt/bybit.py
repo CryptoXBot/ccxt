@@ -47,6 +47,7 @@ class bybit(Exchange):
                 'fetchClosedOrders': True,
                 'fetchDeposits': True,
                 'fetchFundingRate': True,
+                'fetchFundingRateHistory': False,
                 'fetchIndexOHLCV': True,
                 'fetchLedger': True,
                 'fetchMarkets': True,
@@ -291,6 +292,7 @@ class bybit(Exchange):
             },
             'exceptions': {
                 'exact': {
+                    '-2015': AuthenticationError,  # Invalid API-key, IP, or permissions for action.
                     '10001': BadRequest,  # parameter error
                     '10002': InvalidNonce,  # request expired, check your timestamp and recv_window
                     '10003': AuthenticationError,  # Invalid apikey
@@ -528,6 +530,7 @@ class bybit(Exchange):
                 'amount': self.safe_number(lotSizeFilter, 'qty_step'),
                 'price': self.safe_number(priceFilter, 'tick_size'),
             }
+            leverage = self.safe_value(market, 'leverage_filter', {})
             status = self.safe_string(market, 'status')
             active = None
             if status is not None:
@@ -564,6 +567,9 @@ class bybit(Exchange):
                     'cost': {
                         'min': None,
                         'max': None,
+                    },
+                    'leverage': {
+                        'max': self.safe_number(leverage, 'max_leverage', 1),
                     },
                 },
                 'info': market,
@@ -862,7 +868,7 @@ class bybit(Exchange):
         request = {
             'symbol': market['id'],
         }
-        method = 'v2PublicGetFundingPrevFundingRate'
+        method = 'publicLinearGetFundingPrevFundingRate' if market['linear'] else 'v2PublicGetFundingPrevFundingRate'
         response = getattr(self, method)(self.extend(request, params))
         #
         # {
@@ -882,18 +888,24 @@ class bybit(Exchange):
         # }
         #
         result = self.safe_value(response, 'result')
-        lastFundingRate = self.safe_number(result, 'funding_rate')
-        lastFundingTime = self.safe_integer(result, 'funding_rate_timestamp') * 1000
-        nextFundingTime = lastFundingTime + (8 * 3600000)
+        nextFundingRate = self.safe_number(result, 'funding_rate')
+        previousFundingTime = self.safe_integer(result, 'funding_rate_timestamp') * 1000
+        nextFundingTime = previousFundingTime + (8 * 3600000)
         currentTime = self.milliseconds()
         return {
+            'info': result,
             'symbol': symbol,
+            'markPrice': None,
+            'indexPrice': None,
+            'interestRate': None,
+            'estimatedSettlePrice': None,
             'timestamp': currentTime,
             'datetime': self.iso8601(currentTime),
-            'lastFundingRate': lastFundingRate,
-            'lastFundingTimestamp': lastFundingTime,
+            'previousFundingRate': None,
+            'nextFundingRate': nextFundingRate,
+            'previousFundingTimestamp': previousFundingTime,
             'nextFundingTimestamp': nextFundingTime,
-            'lastFundingDatetime': self.iso8601(lastFundingTime),
+            'previousFundingDatetime': self.iso8601(previousFundingTime),
             'nextFundingDatetime': self.iso8601(nextFundingTime),
         }
 
@@ -1270,14 +1282,12 @@ class bybit(Exchange):
         timestamp = self.parse8601(self.safe_string(order, 'created_at'))
         id = self.safe_string_2(order, 'order_id', 'stop_order_id')
         type = self.safe_string_lower(order, 'order_type')
-        price = self.safe_number(order, 'price')
-        if price == 0.0:
-            price = None
-        average = self.safe_number(order, 'average_price')
-        amount = self.safe_number(order, 'qty')
-        cost = self.safe_number(order, 'cum_exec_value')
-        filled = self.safe_number(order, 'cum_exec_qty')
-        remaining = self.safe_number(order, 'leaves_qty')
+        price = self.safe_string(order, 'price')
+        average = self.safe_string(order, 'average_price')
+        amount = self.safe_string(order, 'qty')
+        cost = self.safe_string(order, 'cum_exec_value')
+        filled = self.safe_string(order, 'cum_exec_qty')
+        remaining = self.safe_string(order, 'leaves_qty')
         marketTypes = self.safe_value(self.options, 'marketTypes', {})
         marketType = self.safe_string(marketTypes, symbol)
         if market is not None:
@@ -1290,10 +1300,10 @@ class bybit(Exchange):
             lastTradeTimestamp = None
         status = self.parse_order_status(self.safe_string_2(order, 'order_status', 'stop_order_status'))
         side = self.safe_string_lower(order, 'side')
-        feeCost = self.safe_number(order, 'cum_exec_fee')
+        feeCostString = self.safe_string(order, 'cum_exec_fee')
+        feeCost = self.parse_number(Precise.string_abs(feeCostString))
         fee = None
         if feeCost is not None:
-            feeCost = abs(feeCost)
             fee = {
                 'cost': feeCost,
                 'currency': feeCurrency,
@@ -1304,7 +1314,7 @@ class bybit(Exchange):
         timeInForce = self.parse_time_in_force(self.safe_string(order, 'time_in_force'))
         stopPrice = self.safe_number_2(order, 'trigger_price', 'stop_px')
         postOnly = (timeInForce == 'PO')
-        return self.safe_order({
+        return self.safe_order2({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -1326,7 +1336,7 @@ class bybit(Exchange):
             'status': status,
             'fee': fee,
             'trades': None,
-        })
+        }, market)
 
     def fetch_order(self, id, symbol=None, params={}):
         if symbol is None:
@@ -2057,7 +2067,7 @@ class bybit(Exchange):
             currency = self.currency(code)
             request['coin'] = currency['id']
         if since is not None:
-            request['start_date'] = self.ymd(since)
+            request['start_date'] = self.yyyymmdd(since)
         if limit is not None:
             request['limit'] = limit
         response = self.v2PrivateGetWalletFundRecords(self.extend(request, params))
@@ -2109,7 +2119,7 @@ class bybit(Exchange):
             currency = self.currency(code)
             request['coin'] = currency['id']
         if since is not None:
-            request['start_date'] = self.ymd(since)
+            request['start_date'] = self.yyyymmdd(since)
         if limit is not None:
             request['limit'] = limit
         response = self.v2PrivateGetWalletWithdrawList(self.extend(request, params))
@@ -2242,7 +2252,7 @@ class bybit(Exchange):
             currency = self.currency(code)
             request['coin'] = currency['id']
         if since is not None:
-            request['start_date'] = self.ymd(since)
+            request['start_date'] = self.yyyymmdd(since)
         if limit is not None:
             request['limit'] = limit
         response = self.v2PrivateGetWalletFundRecords(self.extend(request, params))
@@ -2434,7 +2444,7 @@ class bybit(Exchange):
             self.throw_broadly_matched_exception(self.exceptions['broad'], body, feedback)
             raise ExchangeError(feedback)  # unknown message
 
-    def set_margin_mode(self, symbol, marginType, params={}):
+    def set_margin_mode(self, marginType, symbol=None, params={}):
         #
         # {
         #     "ret_code": 0,
@@ -2478,7 +2488,7 @@ class bybit(Exchange):
         }
         return getattr(self, method)(self.extend(request, params))
 
-    def set_leverage(self, leverage=None, symbol=None, params={}):
+    def set_leverage(self, leverage, symbol=None, params={}):
         if symbol is None:
             raise ArgumentsRequired(self.id + ' setLeverage() requires a symbol argument')
         self.load_markets()

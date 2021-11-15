@@ -344,7 +344,7 @@ class phemex extends Exchange {
         //         "contractUnderlyingAssets":"USD",
         //         "settleCurrency":"BTC",
         //         "quoteCurrency":"USD",
-        //         "contractSize":"1 USD",
+        //         "$contractSize":"1 USD",
         //         "lotSize":1,
         //         "tickSize":0.5,
         //         "$priceScale":4,
@@ -384,16 +384,21 @@ class phemex extends Exchange {
         $quoteId = $this->safe_string($market, 'quoteCurrency');
         $base = $this->safe_currency_code($baseId);
         $quote = $this->safe_currency_code($quoteId);
-        $symbol = $base . '/' . $quote;
         $type = $this->safe_string_lower($market, 'type');
         $inverse = false;
         $spot = false;
         $swap = true;
-        $settlementCurrencyId = $this->safe_string($market, 'settlementCurrency');
+        $settlementCurrencyId = $this->safe_string($market, 'settleCurrency');
         if ($settlementCurrencyId !== $quoteId) {
             $inverse = true;
         }
         $linear = !$inverse;
+        $symbol = null;
+        if ($linear) {
+            $symbol = $base . '/' . $quote . ':' . $quote;
+        } else {
+            $symbol = $base . '/' . $quote . ':' . $base;
+        }
         $precision = array(
             'amount' => $this->safe_number($market, 'lotSize'),
             'price' => $this->safe_number($market, 'tickSize'),
@@ -423,6 +428,7 @@ class phemex extends Exchange {
         );
         $status = $this->safe_string($market, 'status');
         $active = $status === 'Listed';
+        $contractSize = $this->safe_string($market, 'contractSize');
         return array(
             'id' => $id,
             'symbol' => $symbol,
@@ -443,6 +449,7 @@ class phemex extends Exchange {
             'valueScale' => $valueScale,
             'ratioScale' => $ratioScale,
             'precision' => $precision,
+            'contractSize' => $contractSize,
             'limits' => $limits,
         );
     }
@@ -529,6 +536,7 @@ class phemex extends Exchange {
             'priceScale' => 8,
             'valueScale' => 8,
             'ratioScale' => 8,
+            'contractSize' => null,
             'limits' => $limits,
         );
     }
@@ -2236,6 +2244,7 @@ class phemex extends Exchange {
             'currency' => $code,
             'address' => $address,
             'tag' => $tag,
+            'network' => null,
             'info' => $response,
         );
     }

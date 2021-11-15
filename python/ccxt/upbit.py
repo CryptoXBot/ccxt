@@ -329,6 +329,8 @@ class upbit(Exchange):
             'quote': quote,
             'baseId': baseId,
             'quoteId': quoteId,
+            'type': 'spot',
+            'spot': True,
             'active': active,
             'precision': precision,
             'maker': fee,
@@ -1308,6 +1310,7 @@ class upbit(Exchange):
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': None,
             'info': depositAddress,
         }
 

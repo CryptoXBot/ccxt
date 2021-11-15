@@ -261,6 +261,7 @@ class ascendex(Exchange):
                     '300011': InsufficientFunds,  # INVALID_BALANCE No enough account or asset balance for the trading
                     '300012': BadSymbol,  # INVALID_PRODUCT Not a valid product supported by exchange
                     '300013': InvalidOrder,  # INVALID_BATCH_ORDER Some or all orders are invalid in batch order request
+                    '300014': InvalidOrder,  # {"code":300014,"message":"Order price doesn't conform to the required tick size: 0.1","reason":"TICK_SIZE_VIOLATION"}
                     '300020': InvalidOrder,  # TRADING_RESTRICTED There is some trading restriction on account or asset
                     '300021': InvalidOrder,  # TRADING_DISABLED Trading is disabled on account or asset
                     '300031': InvalidOrder,  # NO_MARKET_PRICE No market price for market type order trading
@@ -527,7 +528,7 @@ class ascendex(Exchange):
         accountGroup = self.safe_string(self.options, 'account-group')
         response = None
         if accountGroup is None:
-            response = self.privateGetInfo(params)
+            response = self.v1PrivateGetInfo(params)
             #
             #     {
             #         "code":0,
@@ -979,10 +980,10 @@ class ascendex(Exchange):
         symbol = self.safe_symbol(marketId, market, '/')
         timestamp = self.safe_integer_2(order, 'timestamp', 'sendingTime')
         lastTradeTimestamp = self.safe_integer(order, 'lastExecTime')
-        price = self.safe_number(order, 'price')
-        amount = self.safe_number(order, 'orderQty')
-        average = self.safe_number(order, 'avgPx')
-        filled = self.safe_number_2(order, 'cumFilledQty', 'cumQty')
+        price = self.safe_string(order, 'price')
+        amount = self.safe_string(order, 'orderQty')
+        average = self.safe_string(order, 'avgPx')
+        filled = self.safe_string_2(order, 'cumFilledQty', 'cumQty')
         id = self.safe_string(order, 'orderId')
         clientOrderId = self.safe_string(order, 'id')
         if clientOrderId is not None:
@@ -1000,10 +1001,10 @@ class ascendex(Exchange):
                 'currency': feeCurrencyCode,
             }
         stopPrice = self.safe_number(order, 'stopPrice')
-        return self.safe_order({
+        return self.safe_order2({
             'info': order,
             'id': id,
-            'clientOrderId': None,
+            'clientOrderId': clientOrderId,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
             'lastTradeTimestamp': lastTradeTimestamp,
@@ -1022,7 +1023,7 @@ class ascendex(Exchange):
             'status': status,
             'fee': fee,
             'trades': None,
-        })
+        }, market)
 
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         self.load_markets()
@@ -1407,6 +1408,7 @@ class ascendex(Exchange):
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': None,  # TODO: parse network
             'info': depositAddress,
         }
 
@@ -1623,7 +1625,7 @@ class ascendex(Exchange):
         }
         return self.v2PrivateAccountGroupPostFuturesLeverage(self.extend(request, params))
 
-    def set_margin_mode(self, symbol, marginType='', params={}):
+    def set_margin_mode(self, marginType, symbol=None, params={}):
         if marginType != 'isolated' and marginType != 'crossed':
             raise BadRequest(self.id + ' setMarginMode() marginType argument should be isolated or crossed')
         self.load_markets()
@@ -1662,6 +1664,9 @@ class ascendex(Exchange):
         url += '/' + request
         if (version == 'v1') and (request == 'cash/balance') or (request == 'margin/balance'):
             request = 'balance'
+        if request.find('subuser') >= 0:
+            parts = request.split('/')
+            request = parts[2]
         query = self.omit(query, self.extract_params(path))
         if access == 'public':
             if query:

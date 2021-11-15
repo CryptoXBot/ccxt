@@ -330,6 +330,8 @@ class upbit extends Exchange {
             'quote' => $quote,
             'baseId' => $baseId,
             'quoteId' => $quoteId,
+            'type' => 'spot',
+            'spot' => true,
             'active' => $active,
             'precision' => $precision,
             'maker' => $fee,
@@ -1374,6 +1376,7 @@ class upbit extends Exchange {
             'currency' => $code,
             'address' => $address,
             'tag' => $tag,
+            'network' => null,
             'info' => $depositAddress,
         );
     }

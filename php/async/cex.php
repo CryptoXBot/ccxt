@@ -336,6 +336,9 @@ class cex extends Exchange {
                 'quote' => $quote,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
+                'type' => 'spot',
+                'spot' => true,
+                'active' => null,
                 'precision' => $precision,
                 'limits' => array(
                     'amount' => array(
@@ -351,7 +354,6 @@ class cex extends Exchange {
                         'max' => null,
                     ),
                 ),
-                'active' => null,
             );
         }
         return $result;
@@ -421,12 +423,9 @@ class cex extends Exchange {
                 throw new ExchangeError($this->id . " fetchOHLCV warning => CEX can return historical candles for a certain date only, this might produce an empty or null reply. Set exchange.options['fetchOHLCVWarning'] = false or add (array( 'options' => array( 'fetchOHLCVWarning' => false ))) to constructor $params to suppress this warning message.");
             }
         }
-        $ymd = $this->ymd($since);
-        $ymd = explode('-', $ymd);
-        $ymd = implode('', $ymd);
         $request = array(
             'pair' => $market['id'],
-            'yyyymmdd' => $ymd,
+            'yyyymmdd' => $this->yyyymmdd($since, ''),
         );
         try {
             $response = yield $this->publicGetOhlcvHdYyyymmddPair (array_merge($request, $params));
@@ -1273,6 +1272,7 @@ class cex extends Exchange {
             'currency' => $code,
             'address' => $address,
             'tag' => null,
+            'network' => null,
             'info' => $response,
         );
     }

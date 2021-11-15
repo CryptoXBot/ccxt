@@ -231,6 +231,7 @@ class poloniex(Exchange):
                 'broad': {
                     'Total must be at least': InvalidOrder,  # {"error":"Total must be at least 0.0001."}
                     'This account is frozen.': AccountSuspended,
+                    'This account is locked.': AccountSuspended,  # {"error":"This account is locked."}
                     'Not enough': InsufficientFunds,
                     'Nonce must be greater': InvalidNonce,
                     'You have already called cancelOrder or moveOrder on self order.': CancelPending,
@@ -317,6 +318,11 @@ class poloniex(Exchange):
             isFrozen = self.safe_string(market, 'isFrozen')
             active = (isFrozen != '1')
             numericId = self.safe_integer(market, 'id')
+            # these are known defaults
+            precision = {
+                'price': 8,
+                'amount': 8,
+            }
             result.append({
                 'id': id,
                 'numericId': numericId,
@@ -325,7 +331,10 @@ class poloniex(Exchange):
                 'quoteId': quoteId,
                 'base': base,
                 'quote': quote,
+                'type': 'spot',
+                'spot': True,
                 'active': active,
+                'precision': precision,
                 'limits': limits,
                 'info': market,
             })
@@ -1197,6 +1206,7 @@ class poloniex(Exchange):
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': None,
             'info': response,
         }
 

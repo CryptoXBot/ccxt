@@ -36,7 +36,7 @@ use Elliptic\EdDSA;
 use BN\BN;
 use Exception;
 
-$version = '1.58.5';
+$version = '1.61.24';
 
 // rounding mode
 const TRUNCATE = 0;
@@ -55,7 +55,7 @@ const PAD_WITH_ZERO = 1;
 
 class Exchange {
 
-    const VERSION = '1.58.5';
+    const VERSION = '1.61.24';
 
     private static $base58_alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
     private static $base58_encoder = null;
@@ -86,14 +86,13 @@ class Exchange {
         'bitmart',
         'bitmex',
         'bitpanda',
+        'bitrue',
         'bitso',
         'bitstamp',
         'bitstamp1',
         'bittrex',
         'bitvavo',
-        'bitz',
         'bl3p',
-        'btcalpha',
         'btcbox',
         'btcmarkets',
         'btctradeua',
@@ -108,7 +107,6 @@ class Exchange {
         'coinbaseprime',
         'coinbasepro',
         'coincheck',
-        'coinegg',
         'coinex',
         'coinfalcon',
         'coinmarketcap',
@@ -123,12 +121,13 @@ class Exchange {
         'eqonex',
         'equos',
         'exmo',
-        'exx',
         'flowbtc',
         'ftx',
+        'ftxus',
         'gateio',
         'gemini',
         'hitbtc',
+        'hitbtc3',
         'hollaex',
         'huobi',
         'huobijp',
@@ -141,12 +140,13 @@ class Exchange {
         'kucoin',
         'kuna',
         'latoken',
+        'latoken1',
         'lbank',
         'liquid',
         'luno',
         'lykke',
         'mercado',
-        'mixcoins',
+        'mexc',
         'ndax',
         'novadax',
         'oceanex',
@@ -328,6 +328,8 @@ class Exchange {
         'safeMarket' => 'safe_market',
         'safeSymbol' => 'safe_symbol',
         'filterBySymbol' => 'filter_by_symbol',
+        'parseFundingRate' => 'parse_funding_rate',
+        'parseFundingRates' => 'parse_funding_rates',
         'parseOHLCV' => 'parse_ohlcv',
         'parseOHLCVs' => 'parse_ohlc_vs',
         'editLimitBuyOrder' => 'edit_limit_buy_order',
@@ -353,6 +355,7 @@ class Exchange {
         'signMessage' => 'sign_message',
         'signMessageString' => 'sign_message_string',
         'reduceFeesByCurrency' => 'reduce_fees_by_currency',
+        'safeTrade' => 'safe_trade',
         'safeOrder' => 'safe_order',
         'safeOrder2' => 'safe_order2',
         'parseNumber' => 'parse_number',
@@ -360,6 +363,7 @@ class Exchange {
         'safeNumber2' => 'safe_number2',
         'parsePrecision' => 'parse_precision',
         'handleWithdrawTagAndParams' => 'handle_withdraw_tag_and_params',
+        'getSupportedMapping' => 'get_supported_mapping',
     );
 
     public static function split($string, $delimiters = array(' ')) {
@@ -886,8 +890,17 @@ class Exchange {
         return gmdate('m' . $infix . 'd' . $infix . 'Y', (int) round($timestamp / 1000));
     }
 
-    public static function ymd($timestamp, $infix = '-') {
-        return gmdate('Y' . $infix . 'm' . $infix . 'd', (int) round($timestamp / 1000));
+    public static function ymd($timestamp, $infix = '-', $fullYear = true) {
+        $yearFormat = $fullYear ? 'Y' : 'y';
+        return gmdate($yearFormat . $infix . 'm' . $infix . 'd', (int) round($timestamp / 1000));
+    }
+
+    public static function yymmdd($timestamp, $infix = '') {
+        return static::ymd($timestamp, $infix, false);
+    }
+
+    public static function yyyymmdd($timestamp, $infix = '-') {
+        return static::ymd($timestamp, $infix, true);
     }
 
     public static function ymdhms($timestamp, $infix = ' ') {
@@ -1167,6 +1180,7 @@ class Exchange {
         $this->precisionMode = DECIMAL_PLACES;
         $this->paddingMode = NO_PADDING;
         $this->number = 'floatval';
+        $this->handleContentTypeApplicationZip = false;
 
         $this->lastRestRequestTimestamp = 0;
         $this->lastRestPollTimestamp = 0;
@@ -1671,6 +1685,11 @@ class Exchange {
         $this->handle_errors($http_status_code, $http_status_text, $url, $method, $response_headers, $result ? $result : null, $json_response, $headers, $body);
         $this->handle_http_status_code($http_status_code, $http_status_text, $url, $method, $result);
 
+        // check if $curl_errno is not zero
+        if ($curl_errno) {
+            throw new NetworkError($this->id . ' unknown error: ' . strval($curl_errno) . ' ' . $curl_error);
+        }
+
         return isset($json_response) ? $json_response : $result;
     }
 
@@ -1769,6 +1788,20 @@ class Exchange {
         }
         $this->accountsById = static::index_by($this->accounts, 'id');
         return $this->accounts;
+    }
+
+    public function parse_funding_rate($response, $market = null) {
+        throw new NotSupported($this->id . ' parse_funding_rate() not supported yet');
+    }
+
+    public function parse_funding_rates($response, $market = null) {
+        $response = is_array($response) ? array_values($response) : array();
+        $result = array();
+        foreach ($response as $entry) {
+            $parsed = $this->parse_funding_rate($entry, $market);
+            $result[$parsed['symbol']] = $parsed;
+        }
+        return $result;
     }
 
     public function parse_ohlcv($ohlcv, $market = null) {
@@ -2014,10 +2047,10 @@ class Exchange {
         return $this->filter_by_array($result, 'symbol', $symbols);
     }
 
-    public function parse_deposit_addresses($addresses, $codes = null, $indexed = true) {
+    public function parse_deposit_addresses($addresses, $codes = null, $indexed = true, $params = array()){
         $result = array();
         for ($i = 0; $i < count($addresses); $i++) {
-            $address = $this->parse_deposit_address($addresses[$i]);
+            $address = $this->extend($this->parse_deposit_address($addresses[$i]), $params);
             $result[] = $address;
         }
         if ($codes) {
@@ -2985,6 +3018,60 @@ class Exchange {
         return is_array($reduced) ? array_values($reduced) : array();
     }
 
+    public function safe_trade($trade, $market = null) {
+        $amount = $this->safe_string($trade, 'amount');
+        $price = $this->safe_string($trade, 'price');
+        $cost = $this->safe_string($trade, 'cost');
+        if ($cost === null) {
+            $cost = Precise::string_mul($price, $amount);
+        }
+        $parseFee = $this->safe_value($trade, 'fee') === null;
+        $parseFees = $this->safe_value($trade, 'fees') === null;
+        $shouldParseFees = $parseFee || $parseFees;
+        $fees = $this->safe_value($trade, 'fees', array());
+        if ($shouldParseFees) {
+            $tradeFees = $this->safe_value($trade, 'fees');
+            if ($tradeFees !== null) {
+                for ($j = 0; $j < count($tradeFees); $j++) {
+                    $tradeFee = $tradeFees[$j];
+                    $fees[] = array_merge(array(), $tradeFee);
+                }
+            } else {
+                $tradeFee = $this->safe_value($trade, 'fee');
+                if ($tradeFee !== null) {
+                    $fees[] = array_merge(array(), $tradeFee);
+                }
+            }
+        }
+        $fee = $this->safe_value($trade, 'fee');
+        if ($shouldParseFees) {
+            $reducedFees = $this->reduceFees ? $this->reduce_fees_by_currency($fees, true) : $fees;
+            $reducedLength = is_array($reducedFees) ? count($reducedFees) : 0;
+            for ($i = 0; $i < $reducedLength; $i++) {
+                $reducedFees[$i]['cost'] = $this->parse_number($reducedFees[$i]['cost']);
+            }
+            if (!$parseFee && ($reducedLength === 0)) {
+                $fee['cost'] = $this->parse_number($this->safe_string($fee, 'cost'));
+                $reducedFees[] = $fee;
+            }
+            if ($parseFees) {
+                $trade['fees'] = $reducedFees;
+            }
+            if ($parseFee && ($reducedLength === 1)) {
+                $trade['fee'] = $reducedFees[0];
+            }
+            $tradeFee = $this->safe_value($trade, 'fee');
+            if ($tradeFee !== null) {
+                $tradeFee['cost'] = $this->parse_number($this->safe_string($tradeFee, 'cost'));
+                $trade['fee'] = $tradeFee;
+            }
+        }
+        $trade['amount'] = $this->parse_number($amount);
+        $trade['price'] = $this->parse_number($price);
+        $trade['cost'] = $this->parse_number($cost);
+        return $trade;
+    }
+
     public function safe_order($order) {
         // Cost
         // Remaining
@@ -3231,6 +3318,15 @@ class Exchange {
             } else {
                 $cost = Precise::string_mul($average, $filled);
             }
+            // contract trading
+            $contractSize = $this->safe_string($market, 'contractSize');
+            if ($contractSize !== null) {
+                $inverse = $this->safe_value($market, 'inverse', false);
+                if ($inverse) {
+                    $cost = Precise::string_div('1', $cost, 8);
+                }
+                $cost = Precise::string_mul($cost, $contractSize);
+            }
         }
         // support for $market orders
         $orderType = $this->safe_value($order, 'type');
@@ -3289,7 +3385,7 @@ class Exchange {
     }
 
     public function omit_zero($string_number) {
-        if ($string_number === null) {
+        if ($string_number === null || $string_number === '') {
             return null;
         }
         if (floatval($string_number) === 0.0) {
@@ -3310,5 +3406,16 @@ class Exchange {
             }
         }
         return array($tag, $params);
+    }
+
+    public function get_supported_mapping($key, $mapping = array()) {
+        // Takes a key and a dictionary, and returns the dictionary's value for that key
+        // :throws:
+        //      NotSupported if the dictionary does not contain the key
+        if (array_key_exists($key, $mapping)) {
+            return $mapping[$key];
+        } else {
+            throw new NotSupported ($this->id . ' ' . $key . ' does not have a value in mapping');
+        }
     }
 }

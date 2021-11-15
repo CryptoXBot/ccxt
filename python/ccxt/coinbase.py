@@ -536,6 +536,8 @@ class coinbase(Exchange):
                         'quote': quote,
                         'baseId': baseId,
                         'quoteId': quoteId,
+                        'type': 'spot',
+                        'spot': True,
                         'active': None,
                         'info': quoteCurrency,
                         'precision': {
@@ -554,6 +556,9 @@ class coinbase(Exchange):
                             'cost': {
                                 'min': self.safe_number(quoteCurrency, 'min_size'),
                                 'max': None,
+                            },
+                            'leverage': {
+                                'max': 1,
                             },
                         },
                     })

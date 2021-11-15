@@ -257,6 +257,7 @@ class ascendex extends Exchange {
                     '300011' => '\\ccxt\\InsufficientFunds', // INVALID_BALANCE No enough account or asset balance for the trading
                     '300012' => '\\ccxt\\BadSymbol', // INVALID_PRODUCT Not a valid product supported by exchange
                     '300013' => '\\ccxt\\InvalidOrder', // INVALID_BATCH_ORDER Some or all orders are invalid in batch order request
+                    '300014' => '\\ccxt\\InvalidOrder', // array("code":300014,"message":"Order price doesn't conform to the required tick size => 0.1","reason":"TICK_SIZE_VIOLATION")
                     '300020' => '\\ccxt\\InvalidOrder', // TRADING_RESTRICTED There is some trading restriction on account or asset
                     '300021' => '\\ccxt\\InvalidOrder', // TRADING_DISABLED Trading is disabled on account or asset
                     '300031' => '\\ccxt\\InvalidOrder', // NO_MARKET_PRICE No market price for market type order trading
@@ -530,7 +531,7 @@ class ascendex extends Exchange {
         $accountGroup = $this->safe_string($this->options, 'account-group');
         $response = null;
         if ($accountGroup === null) {
-            $response = yield $this->privateGetInfo ($params);
+            $response = yield $this->v1PrivateGetInfo ($params);
             //
             //     {
             //         "code":0,
@@ -1001,10 +1002,10 @@ class ascendex extends Exchange {
         $symbol = $this->safe_symbol($marketId, $market, '/');
         $timestamp = $this->safe_integer_2($order, 'timestamp', 'sendingTime');
         $lastTradeTimestamp = $this->safe_integer($order, 'lastExecTime');
-        $price = $this->safe_number($order, 'price');
-        $amount = $this->safe_number($order, 'orderQty');
-        $average = $this->safe_number($order, 'avgPx');
-        $filled = $this->safe_number_2($order, 'cumFilledQty', 'cumQty');
+        $price = $this->safe_string($order, 'price');
+        $amount = $this->safe_string($order, 'orderQty');
+        $average = $this->safe_string($order, 'avgPx');
+        $filled = $this->safe_string_2($order, 'cumFilledQty', 'cumQty');
         $id = $this->safe_string($order, 'orderId');
         $clientOrderId = $this->safe_string($order, 'id');
         if ($clientOrderId !== null) {
@@ -1025,10 +1026,10 @@ class ascendex extends Exchange {
             );
         }
         $stopPrice = $this->safe_number($order, 'stopPrice');
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'info' => $order,
             'id' => $id,
-            'clientOrderId' => null,
+            'clientOrderId' => $clientOrderId,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
             'lastTradeTimestamp' => $lastTradeTimestamp,
@@ -1047,7 +1048,7 @@ class ascendex extends Exchange {
             'status' => $status,
             'fee' => $fee,
             'trades' => null,
-        ));
+        ), $market);
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
@@ -1456,6 +1457,7 @@ class ascendex extends Exchange {
             'currency' => $code,
             'address' => $address,
             'tag' => $tag,
+            'network' => null, // TODO => parse network
             'info' => $depositAddress,
         );
     }
@@ -1689,7 +1691,7 @@ class ascendex extends Exchange {
         return yield $this->v2PrivateAccountGroupPostFuturesLeverage (array_merge($request, $params));
     }
 
-    public function set_margin_mode($symbol, $marginType = '', $params = array ()) {
+    public function set_margin_mode($marginType, $symbol = null, $params = array ()) {
         if ($marginType !== 'isolated' && $marginType !== 'crossed') {
             throw new BadRequest($this->id . ' setMarginMode() $marginType argument should be isolated or crossed');
         }
@@ -1734,6 +1736,10 @@ class ascendex extends Exchange {
         $url .= '/' . $request;
         if (($version === 'v1') && ($request === 'cash/balance') || ($request === 'margin/balance')) {
             $request = 'balance';
+        }
+        if (mb_strpos($request, 'subuser') !== false) {
+            $parts = explode('/', $request);
+            $request = $parts[2];
         }
         $query = $this->omit($query, $this->extract_params($path));
         if ($access === 'public') {

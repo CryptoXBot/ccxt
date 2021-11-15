@@ -47,7 +47,7 @@ class gemini(Exchange):
                 'fetchBalance': True,
                 'fetchBidsAsks': None,
                 'fetchClosedOrders': None,
-                'fetchDepositAddress': None,
+                'fetchDepositAddress': None,  # TODO
                 'fetchDeposits': None,
                 'fetchMarkets': True,
                 'fetchMyTrades': True,
@@ -99,21 +99,23 @@ class gemini(Exchange):
                 'public': {
                     'get': [
                         'v1/symbols',
-                        'v1/pricefeed',
+                        'v1/symbols/details/{symbol}',
                         'v1/pubticker/{symbol}',
-                        'v1/book/{symbol}',
+                        'v2/ticker/{symbol}',
+                        'v2/candles/{symbol}/{timeframe}',
                         'v1/trades/{symbol}',
                         'v1/auction/{symbol}',
                         'v1/auction/{symbol}/history',
-                        'v2/candles/{symbol}/{timeframe}',
-                        'v2/ticker/{symbol}',
+                        'v1/pricefeed',
+                        'v1/book/{symbol}',
+                        'v1/earn/rates',
                     ],
                 },
                 'private': {
                     'post': [
-                        'v1/account/list',
                         'v1/order/new',
                         'v1/order/cancel',
+                        'v1/wrap/{symbol}',
                         'v1/order/cancel/session',
                         'v1/order/cancel/all',
                         'v1/order/status',
@@ -121,12 +123,30 @@ class gemini(Exchange):
                         'v1/mytrades',
                         'v1/notionalvolume',
                         'v1/tradevolume',
-                        'v1/transfers',
+                        'v1/clearing/new',
+                        'v1/clearing/status',
+                        'v1/clearing/cancel',
+                        'v1/clearing/confirm',
                         'v1/balances',
+                        'v1/notionalbalances/{currency}',
+                        'v1/transfers',
+                        'v1/addresses/{network}',
+                        'v1/deposit/{network}/newAddress',
                         'v1/deposit/{currency}/newAddress',
                         'v1/withdraw/{currency}',
+                        'v1/account/transfer/{currency}',
+                        'v1/payments/addbank',
+                        'v1/payments/methods',
+                        'v1/payments/sen/withdraw',
+                        'v1/balances/earn',
+                        'v1/earn/interest',
+                        'v1/approvedAddresses/{network}/request',
+                        'v1/approvedAddresses/account/{network}',
+                        'v1/approvedAddresses/{network}/remove',
+                        'v1/account',
+                        'v1/account/create',
+                        'v1/account/list',
                         'v1/heartbeat',
-                        'v1/transfers',
                     ],
                 },
             },
@@ -197,6 +217,26 @@ class gemini(Exchange):
             'options': {
                 'fetchMarketsMethod': 'fetch_markets_from_web',
                 'fetchTickerMethod': 'fetchTickerV1',  # fetchTickerV1, fetchTickerV2, fetchTickerV1AndV2
+                'networkIds': {
+                    'bitcoin': 'BTC',
+                    'ethereum': 'ERC20',
+                    'bitcoincash': 'BCH',
+                    'litecoin': 'LTC',
+                    'zcash': 'ZEC',
+                    'filecoin': 'FIL',
+                    'dogecoin': 'DOGE',
+                    'tezos': 'XTZ',
+                },
+                'networks': {
+                    'BTC': 'bitcoin',
+                    'ERC20': 'ethereum',
+                    'BCH': 'bitcoincash',
+                    'LTC': 'litecoin',
+                    'ZEC': 'zcash',
+                    'FIL': 'filecoin',
+                    'DOGE': 'dogecoin',
+                    'XTZ': 'tezos',
+                },
             },
         })
 
@@ -243,7 +283,8 @@ class gemini(Exchange):
             amountPrecisionParts = amountPrecisionString.split(' ')
             amountPrecision = self.safe_number(amountPrecisionParts, 0)
             idLength = len(marketId) - 0
-            quoteId = marketId[idLength - 3:idLength]
+            startingIndex = idLength - 3
+            quoteId = marketId[startingIndex:idLength]
             quote = self.safe_currency_code(quoteId)
             pricePrecisionString = cells[3].replace('<td>', '')
             pricePrecisionParts = pricePrecisionString.split(' ')
@@ -260,6 +301,8 @@ class gemini(Exchange):
                 'quote': quote,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'type': 'spot',
+                'spot': True,
                 'active': active,
                 'precision': {
                     'amount': amountPrecision,
@@ -595,16 +638,16 @@ class gemini(Exchange):
 
     def parse_order(self, order, market=None):
         timestamp = self.safe_integer(order, 'timestampms')
-        amount = self.safe_number(order, 'original_amount')
-        remaining = self.safe_number(order, 'remaining_amount')
-        filled = self.safe_number(order, 'executed_amount')
+        amount = self.safe_string(order, 'original_amount')
+        remaining = self.safe_string(order, 'remaining_amount')
+        filled = self.safe_string(order, 'executed_amount')
         status = 'closed'
         if order['is_live']:
             status = 'open'
         if order['is_cancelled']:
             status = 'canceled'
-        price = self.safe_number(order, 'price')
-        average = self.safe_number(order, 'avg_execution_price')
+        price = self.safe_string(order, 'price')
+        average = self.safe_string(order, 'avg_execution_price')
         type = self.safe_string(order, 'type')
         if type == 'exchange limit':
             type = 'limit'
@@ -618,7 +661,7 @@ class gemini(Exchange):
         id = self.safe_string(order, 'order_id')
         side = self.safe_string_lower(order, 'side')
         clientOrderId = self.safe_string(order, 'client_order_id')
-        return self.safe_order({
+        return self.safe_order2({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,
@@ -640,7 +683,7 @@ class gemini(Exchange):
             'remaining': remaining,
             'fee': fee,
             'trades': None,
-        })
+        }, market)
 
     async def fetch_order(self, id, symbol=None, params={}):
         await self.load_markets()
@@ -761,11 +804,48 @@ class gemini(Exchange):
             'fee': fee,
         }
 
+    def parse_deposit_address(self, depositAddress, currency=None):
+        #
+        #      {
+        #          address: "0xed6494Fe7c1E56d1bd6136e89268C51E32d9708B",
+        #          timestamp: "1636813923098",
+        #          addressVersion: "eV1"                                         }
+        #      }
+        #
+        address = self.safe_string(depositAddress, 'address')
+        return {
+            'currency': currency,
+            'network': None,
+            'address': address,
+            'tag': None,
+            'info': depositAddress,
+        }
+
+    async def fetch_deposit_addresses_by_network(self, code, params={}):
+        await self.load_markets()
+        network = self.safe_string(params, 'network')
+        if network is None:
+            raise ArgumentsRequired(self.id + 'fetchDepositAddressesByNetwork() requires a network parameter')
+        params = self.omit(params, 'network')
+        networks = self.safe_value(self.options, 'networks', {})
+        networkId = self.safe_string(networks, network, network)
+        networkIds = self.safe_value(self.options, 'networkIds', {})
+        networkCode = self.safe_string(networkIds, networkId, network)
+        request = {
+            'network': networkId,
+        }
+        response = await self.privatePostV1AddressesNetwork(self.extend(request, params))
+        results = self.parse_deposit_addresses(response, [code], False, {'network': networkCode, 'currency': code})
+        return self.group_by(results, 'network')
+
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
         url = '/' + self.implode_params(path, params)
         query = self.omit(params, self.extract_params(path))
         if api == 'private':
             self.check_required_credentials()
+            apiKey = self.apiKey
+            if apiKey.find('account') < 0:
+                raise AuthenticationError(self.id + ' sign() requires an account-key, master-keys are not-supported')
             nonce = self.nonce()
             request = self.extend({
                 'request': url,

@@ -73,14 +73,14 @@ class bit2c extends Exchange {
                 ),
             ),
             'markets' => array(
-                'BTC/NIS' => array( 'id' => 'BtcNis', 'symbol' => 'BTC/NIS', 'base' => 'BTC', 'quote' => 'NIS', 'baseId' => 'Btc', 'quoteId' => 'Nis' ),
-                'ETH/NIS' => array( 'id' => 'EthNis', 'symbol' => 'ETH/NIS', 'base' => 'ETH', 'quote' => 'NIS', 'baseId' => 'Eth', 'quoteId' => 'Nis' ),
-                'BCH/NIS' => array( 'id' => 'BchabcNis', 'symbol' => 'BCH/NIS', 'base' => 'BCH', 'quote' => 'NIS', 'baseId' => 'Bchabc', 'quoteId' => 'Nis' ),
-                'LTC/NIS' => array( 'id' => 'LtcNis', 'symbol' => 'LTC/NIS', 'base' => 'LTC', 'quote' => 'NIS', 'baseId' => 'Ltc', 'quoteId' => 'Nis' ),
-                'ETC/NIS' => array( 'id' => 'EtcNis', 'symbol' => 'ETC/NIS', 'base' => 'ETC', 'quote' => 'NIS', 'baseId' => 'Etc', 'quoteId' => 'Nis' ),
-                'BTG/NIS' => array( 'id' => 'BtgNis', 'symbol' => 'BTG/NIS', 'base' => 'BTG', 'quote' => 'NIS', 'baseId' => 'Btg', 'quoteId' => 'Nis' ),
-                'BSV/NIS' => array( 'id' => 'BchsvNis', 'symbol' => 'BSV/NIS', 'base' => 'BSV', 'quote' => 'NIS', 'baseId' => 'Bchsv', 'quoteId' => 'Nis' ),
-                'GRIN/NIS' => array( 'id' => 'GrinNis', 'symbol' => 'GRIN/NIS', 'base' => 'GRIN', 'quote' => 'NIS', 'baseId' => 'Grin', 'quoteId' => 'Nis' ),
+                'BTC/NIS' => array( 'id' => 'BtcNis', 'symbol' => 'BTC/NIS', 'base' => 'BTC', 'quote' => 'NIS', 'baseId' => 'Btc', 'quoteId' => 'Nis', 'type' => 'spot', 'spot' => true ),
+                'ETH/NIS' => array( 'id' => 'EthNis', 'symbol' => 'ETH/NIS', 'base' => 'ETH', 'quote' => 'NIS', 'baseId' => 'Eth', 'quoteId' => 'Nis', 'type' => 'spot', 'spot' => true ),
+                'BCH/NIS' => array( 'id' => 'BchabcNis', 'symbol' => 'BCH/NIS', 'base' => 'BCH', 'quote' => 'NIS', 'baseId' => 'Bchabc', 'quoteId' => 'Nis', 'type' => 'spot', 'spot' => true ),
+                'LTC/NIS' => array( 'id' => 'LtcNis', 'symbol' => 'LTC/NIS', 'base' => 'LTC', 'quote' => 'NIS', 'baseId' => 'Ltc', 'quoteId' => 'Nis', 'type' => 'spot', 'spot' => true ),
+                'ETC/NIS' => array( 'id' => 'EtcNis', 'symbol' => 'ETC/NIS', 'base' => 'ETC', 'quote' => 'NIS', 'baseId' => 'Etc', 'quoteId' => 'Nis', 'type' => 'spot', 'spot' => true ),
+                'BTG/NIS' => array( 'id' => 'BtgNis', 'symbol' => 'BTG/NIS', 'base' => 'BTG', 'quote' => 'NIS', 'baseId' => 'Btg', 'quoteId' => 'Nis', 'type' => 'spot', 'spot' => true ),
+                'BSV/NIS' => array( 'id' => 'BchsvNis', 'symbol' => 'BSV/NIS', 'base' => 'BSV', 'quote' => 'NIS', 'baseId' => 'Bchsv', 'quoteId' => 'Nis', 'type' => 'spot', 'spot' => true ),
+                'GRIN/NIS' => array( 'id' => 'GrinNis', 'symbol' => 'GRIN/NIS', 'base' => 'GRIN', 'quote' => 'NIS', 'baseId' => 'Grin', 'quoteId' => 'Nis', 'type' => 'spot', 'spot' => true ),
             ),
             'fees' => array(
                 'trading' => array(
@@ -289,8 +289,8 @@ class bit2c extends Exchange {
 
     public function parse_order($order, $market = null) {
         $timestamp = $this->safe_integer($order, 'created');
-        $price = $this->safe_number($order, 'price');
-        $amount = $this->safe_number($order, 'amount');
+        $price = $this->safe_string($order, 'price');
+        $amount = $this->safe_string($order, 'amount');
         $symbol = null;
         if ($market !== null) {
             $symbol = $market['symbol'];
@@ -303,7 +303,7 @@ class bit2c extends Exchange {
         }
         $id = $this->safe_string($order, 'id');
         $status = $this->safe_string($order, 'status');
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'id' => $id,
             'clientOrderId' => null,
             'timestamp' => $timestamp,
@@ -325,7 +325,7 @@ class bit2c extends Exchange {
             'fee' => null,
             'info' => $order,
             'average' => null,
-        ));
+        ), $market);
     }
 
     public function fetch_my_trades($symbol = null, $since = null, $limit = null, $params = array ()) {
@@ -337,8 +337,8 @@ class bit2c extends Exchange {
         }
         $request['take'] = $limit;
         if ($since !== null) {
-            $request['toTime'] = $this->ymd($this->milliseconds(), '.');
-            $request['fromTime'] = $this->ymd($since, '.');
+            $request['toTime'] = $this->yyyymmdd($this->milliseconds(), '.');
+            $request['fromTime'] = $this->yyyymmdd($since, '.');
         }
         if ($symbol !== null) {
             $market = $this->market($symbol);

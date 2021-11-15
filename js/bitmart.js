@@ -234,6 +234,7 @@ module.exports = class bitmart extends Exchange {
                     '50021': BadRequest, // 400, Invalid %s
                     '50022': ExchangeNotAvailable, // 400, Service unavailable
                     '50023': BadSymbol, // 400, This Symbol can't place order by api
+                    '50029': InvalidOrder, // {"message":"param not match : size * price >=1000","code":50029,"trace":"f931f030-b692-401b-a0c5-65edbeadc598","data":{}}
                     '53000': AccountSuspended, // 403, Your account is frozen due to security policies. Please contact customer service
                     '57001': BadRequest, // 405, Method Not Allowed
                     '58001': BadRequest, // 415, Unsupported Media Type
@@ -280,6 +281,9 @@ module.exports = class bitmart extends Exchange {
             'commonCurrencies': {
                 'COT': 'Community Coin',
                 'CPC': 'CPCoin',
+                'GDT': 'Gorilla Diamond',
+                '$HERO': 'Step Hero',
+                '$PAC': 'PAC',
                 'MVP': 'MVP Coin',
                 'ONE': 'Menlo One',
                 'PLA': 'Plair',
@@ -1554,16 +1558,15 @@ module.exports = class bitmart extends Exchange {
         if (market !== undefined) {
             status = this.parseOrderStatusByType (market['type'], this.safeString (order, 'status'));
         }
-        let price = this.safeNumber (order, 'price');
-        let average = this.safeNumber2 (order, 'price_avg', 'done_avg_price');
-        const amount = this.safeNumber2 (order, 'size', 'vol');
-        const filled = this.safeNumber2 (order, 'filled_size', 'done_vol');
-        let side = this.safeString (order, 'side');
+        const amount = this.safeString2 (order, 'size', 'vol');
+        const filled = this.safeString2 (order, 'filled_size', 'done_vol');
+        const average = this.safeString2 (order, 'price_avg', 'done_avg_price');
+        const price = this.safeString (order, 'price');
+        const side = this.safeString2 (order, 'way', 'side');
         // 1 = Open long
         // 2 = Close short
         // 3 = Close long
         // 4 = Open short
-        side = this.safeString (order, 'way', side);
         const category = this.safeInteger (order, 'category');
         let type = this.safeString (order, 'type');
         if (category === 1) {
@@ -1571,15 +1574,7 @@ module.exports = class bitmart extends Exchange {
         } else if (category === 2) {
             type = 'market';
         }
-        if (type === 'market') {
-            if (price === 0.0) {
-                price = undefined;
-            }
-            if (average === 0.0) {
-                average = undefined;
-            }
-        }
-        return this.safeOrder ({
+        return this.safeOrder2 ({
             'id': id,
             'clientOrderId': undefined,
             'info': order,
@@ -1601,7 +1596,7 @@ module.exports = class bitmart extends Exchange {
             'status': status,
             'fee': undefined,
             'trades': undefined,
-        });
+        }, market);
     }
 
     parseOrderStatusByType (type, status) {
@@ -2102,6 +2097,7 @@ module.exports = class bitmart extends Exchange {
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': undefined, // TODO: parse
             'info': response,
         };
     }
@@ -2163,7 +2159,7 @@ module.exports = class bitmart extends Exchange {
         };
         let currency = undefined;
         if (code !== undefined) {
-            currency = this.currenc (code);
+            currency = this.currency (code);
             request['currency'] = currency['id'];
         }
         const response = await this.privateAccountGetDepositWithdrawHistory (this.extend (request, params));

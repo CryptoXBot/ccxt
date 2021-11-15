@@ -115,6 +115,7 @@ class yobit extends Exchange {
                 'DIRT' => 'DIRTY',
                 'DROP' => 'FaucetCoin',
                 'DSH' => 'DASH',
+                'EGG' => 'EggCoin',
                 'EKO' => 'EkoCoin',
                 'ENTER' => 'ENTRC',
                 'EPC' => 'ExperienceCoin',
@@ -123,6 +124,7 @@ class yobit extends Exchange {
                 'EXT' => 'LifeExtension',
                 'FUND' => 'FUNDChains',
                 'FUNK' => 'FUNKCoin',
+                'FX' => 'FCoin',
                 'GCC' => 'GlobalCryptocurrency',
                 'GEN' => 'Genstake',
                 'GENE' => 'Genesiscoin',
@@ -157,6 +159,7 @@ class yobit extends Exchange {
                 'PIVX' => 'Darknet',
                 'PRS' => 'PRE',
                 'PUTIN' => 'PutinCoin',
+                'SPACE' => 'Spacecoin',
                 'STK' => 'StakeCoin',
                 'SUB' => 'Subscriptio',
                 'PAY' => 'EPAY',
@@ -166,6 +169,8 @@ class yobit extends Exchange {
                 'REP' => 'Republicoin',
                 'RUR' => 'RUB',
                 'SBTC' => 'Super Bitcoin',
+                'SOLO' => 'SoloCoin',
+                'SUPER' => 'SuperCoin',
                 'TTC' => 'TittieCoin',
                 'UNI' => 'Universe',
                 'UST' => 'Uservice',
@@ -329,6 +334,8 @@ class yobit extends Exchange {
                 'quote' => $quote,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
+                'type' => 'spot',
+                'spot' => true,
                 'active' => $active,
                 'taker' => $takerFee,
                 'maker' => $makerFee,
@@ -385,7 +392,7 @@ class yobit extends Exchange {
         for ($i = 0; $i < count($ids); $i++) {
             $id = $ids[$i];
             $symbol = $this->safe_symbol($id);
-            $result[$symbol] = $this->parse_order_book($response[$id]);
+            $result[$symbol] = $this->parse_order_book($response[$id], $symbol);
         }
         return $result;
     }
@@ -612,13 +619,13 @@ class yobit extends Exchange {
         $timestamp = $this->safe_timestamp($order, 'timestamp_created');
         $marketId = $this->safe_string($order, 'pair');
         $symbol = $this->safe_symbol($marketId, $market);
-        $remaining = $this->safe_number($order, 'amount');
-        $amount = $this->safe_number($order, 'start_amount');
-        $price = $this->safe_number($order, 'rate');
+        $remaining = $this->safe_string($order, 'amount');
+        $amount = $this->safe_string($order, 'start_amount');
+        $price = $this->safe_string($order, 'rate');
         $fee = null;
         $type = 'limit';
         $side = $this->safe_string($order, 'type');
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,
@@ -640,7 +647,7 @@ class yobit extends Exchange {
             'fee' => $fee,
             'average' => null,
             'trades' => null,
-        ));
+        ), $market);
     }
 
     public function fetch_order($id, $symbol = null, $params = array ()) {
@@ -736,6 +743,7 @@ class yobit extends Exchange {
             'currency' => $code,
             'address' => $address,
             'tag' => null,
+            'network' => null,
             'info' => $response,
         );
     }

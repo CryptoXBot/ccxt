@@ -551,6 +551,8 @@ module.exports = class coinbase extends Exchange {
                         'quote': quote,
                         'baseId': baseId,
                         'quoteId': quoteId,
+                        'type': 'spot',
+                        'spot': true,
                         'active': undefined,
                         'info': quoteCurrency,
                         'precision': {
@@ -569,6 +571,9 @@ module.exports = class coinbase extends Exchange {
                             'cost': {
                                 'min': this.safeNumber (quoteCurrency, 'min_size'),
                                 'max': undefined,
+                            },
+                            'leverage': {
+                                'max': 1,
                             },
                         },
                     });

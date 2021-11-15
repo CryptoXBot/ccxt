@@ -7,6 +7,7 @@ namespace ccxt;
 
 use Exception; // a common import
 use \ccxt\ExchangeError;
+use \ccxt\ArgumentsRequired;
 
 class bitbank extends Exchange {
 
@@ -181,6 +182,8 @@ class bitbank extends Exchange {
                 'quote' => $quote,
                 'precision' => $precision,
                 'limits' => $limits,
+                'type' => 'spot',
+                'spot' => true,
                 'active' => $active,
                 'maker' => $maker,
                 'taker' => $taker,
@@ -316,15 +319,15 @@ class bitbank extends Exchange {
     }
 
     public function fetch_ohlcv($symbol, $timeframe = '5m', $since = null, $limit = null, $params = array ()) {
+        if ($since === null) {
+            throw new ArgumentsRequired($this->id . ' fetchOHLCV requires a $since argument');
+        }
         $this->load_markets();
         $market = $this->market($symbol);
-        $date = $this->milliseconds();
-        $date = $this->ymd($date);
-        $date = explode('-', $date);
         $request = array(
             'pair' => $market['id'],
             'candletype' => $this->timeframes[$timeframe],
-            'yyyymmdd' => implode('', $date),
+            'yyyymmdd' => $this->yyyymmdd($since, ''),
         );
         $response = $this->publicGetPairCandlestickCandletypeYyyymmdd (array_merge($request, $params));
         //
@@ -430,15 +433,15 @@ class bitbank extends Exchange {
             $symbol = $market['symbol'];
         }
         $timestamp = $this->safe_integer($order, 'ordered_at');
-        $price = $this->safe_number($order, 'price');
-        $amount = $this->safe_number($order, 'start_amount');
-        $filled = $this->safe_number($order, 'executed_amount');
-        $remaining = $this->safe_number($order, 'remaining_amount');
-        $average = $this->safe_number($order, 'average_price');
+        $price = $this->safe_string($order, 'price');
+        $amount = $this->safe_string($order, 'start_amount');
+        $filled = $this->safe_string($order, 'executed_amount');
+        $remaining = $this->safe_string($order, 'remaining_amount');
+        $average = $this->safe_string($order, 'average_price');
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
         $type = $this->safe_string_lower($order, 'type');
         $side = $this->safe_string_lower($order, 'side');
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'id' => $id,
             'clientOrderId' => null,
             'datetime' => $this->iso8601($timestamp),
@@ -460,7 +463,7 @@ class bitbank extends Exchange {
             'trades' => null,
             'fee' => null,
             'info' => $order,
-        ));
+        ), $market);
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
@@ -560,6 +563,7 @@ class bitbank extends Exchange {
             'currency' => $currency,
             'address' => $address,
             'tag' => null,
+            'network' => null,
             'info' => $response,
         );
     }

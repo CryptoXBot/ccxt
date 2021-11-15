@@ -216,6 +216,7 @@ module.exports = class poloniex extends Exchange {
                 'broad': {
                     'Total must be at least': InvalidOrder, // {"error":"Total must be at least 0.0001."}
                     'This account is frozen.': AccountSuspended,
+                    'This account is locked.': AccountSuspended, // {"error":"This account is locked."}
                     'Not enough': InsufficientFunds,
                     'Nonce must be greater': InvalidNonce,
                     'You have already called cancelOrder or moveOrder on this order.': CancelPending,
@@ -310,6 +311,11 @@ module.exports = class poloniex extends Exchange {
             const isFrozen = this.safeString (market, 'isFrozen');
             const active = (isFrozen !== '1');
             const numericId = this.safeInteger (market, 'id');
+            // these are known defaults
+            const precision = {
+                'price': 8,
+                'amount': 8,
+            };
             result.push ({
                 'id': id,
                 'numericId': numericId,
@@ -318,7 +324,10 @@ module.exports = class poloniex extends Exchange {
                 'quoteId': quoteId,
                 'base': base,
                 'quote': quote,
+                'type': 'spot',
+                'spot': true,
                 'active': active,
+                'precision': precision,
                 'limits': limits,
                 'info': market,
             });
@@ -1282,6 +1291,7 @@ module.exports = class poloniex extends Exchange {
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': undefined,
             'info': response,
         };
     }

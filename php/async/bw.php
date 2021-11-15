@@ -192,7 +192,6 @@ class bw extends Exchange {
             $fee = $this->safe_number($market, 'defaultFee');
             $result[] = array(
                 'id' => $id,
-                'active' => $active,
                 'numericId' => $numericId,
                 'symbol' => $symbol,
                 'base' => $base,
@@ -201,6 +200,9 @@ class bw extends Exchange {
                 'quoteId' => $quoteId,
                 'baseNumericId' => $baseNumericId,
                 'quoteNumericId' => $quoteNumericId,
+                'type' => 'spot',
+                'spot' => true,
+                'active' => $active,
                 'maker' => $fee,
                 'taker' => $fee,
                 'info' => $market,
@@ -726,13 +728,13 @@ class bw extends Exchange {
         } else if ($side === '1') {
             $side = 'buy';
         }
-        $amount = $this->safe_number($order, 'amount');
-        $price = $this->safe_number($order, 'price');
-        $filled = $this->safe_number($order, 'completeAmount');
-        $remaining = $this->safe_number_2($order, 'availabelAmount', 'availableAmount'); // typo in the docs or in the API, availabel vs available
-        $cost = $this->safe_number($order, 'totalMoney');
+        $amount = $this->safe_string($order, 'amount');
+        $price = $this->safe_string($order, 'price');
+        $filled = $this->safe_string($order, 'completeAmount');
+        $remaining = $this->safe_string_2($order, 'availabelAmount', 'availableAmount'); // typo in the docs or in the API, availabel vs available
+        $cost = $this->safe_string($order, 'totalMoney');
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'info' => $order,
             'id' => $this->safe_string($order, 'entrustId'),
             'clientOrderId' => null,
@@ -754,7 +756,7 @@ class bw extends Exchange {
             'status' => $status,
             'fee' => null,
             'trades' => null,
-        ));
+        ), $market);
     }
 
     public function fetch_order($id, $symbol = null, $params = array ()) {
@@ -997,6 +999,7 @@ class bw extends Exchange {
             'currency' => $code,
             'address' => $this->check_address($address),
             'tag' => $tag,
+            'network' => null,
             'info' => $response,
         );
     }

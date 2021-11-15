@@ -240,7 +240,9 @@ class bittrex(Exchange):
                 # 'createOrderMethod': 'create_order_v1',
             },
             'commonCurrencies': {
+                'BIFI': 'Bifrost Finance',
                 'MER': 'Mercury',  # conflict with Mercurial Finance
+                'PROS': 'Pros.Finance',
                 'REPV2': 'REP',
                 'TON': 'Tokamak Network',
             },
@@ -300,6 +302,8 @@ class bittrex(Exchange):
                 'quote': quote,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'type': 'spot',
+                'spot': True,
                 'active': active,
                 'info': market,
                 'precision': precision,
@@ -315,6 +319,9 @@ class bittrex(Exchange):
                     'cost': {
                         'min': None,
                         'max': None,
+                    },
+                    'leverage': {
+                        'max': 1,
                     },
                 },
             })
@@ -666,7 +673,7 @@ class bittrex(Exchange):
         if since is not None:
             now = self.milliseconds()
             difference = abs(now - since)
-            sinceDate = self.ymd(since)
+            sinceDate = self.yyyymmdd(since)
             parts = sinceDate.split('-')
             sinceYear = self.safe_integer(parts, 0)
             sinceMonth = self.safe_integer(parts, 1)
@@ -997,15 +1004,15 @@ class bittrex(Exchange):
             lastTradeTimestamp = self.parse8601(updatedAt)
         timestamp = self.parse8601(createdAt)
         type = self.safe_string_lower(order, 'type')
-        quantity = self.safe_number(order, 'quantity')
-        limit = self.safe_number(order, 'limit')
-        fillQuantity = self.safe_number(order, 'fillQuantity')
+        quantity = self.safe_string(order, 'quantity')
+        limit = self.safe_string(order, 'limit')
+        fillQuantity = self.safe_string(order, 'fillQuantity')
         commission = self.safe_number(order, 'commission')
-        proceeds = self.safe_number(order, 'proceeds')
+        proceeds = self.safe_string(order, 'proceeds')
         status = self.safe_string_lower(order, 'status')
         timeInForce = self.parse_time_in_force(self.safe_string(order, 'timeInForce'))
         postOnly = (timeInForce == 'PO')
-        return self.safe_order({
+        return self.safe_order2({
             'id': self.safe_string(order, 'id'),
             'clientOrderId': clientOrderId,
             'timestamp': timestamp,
@@ -1030,7 +1037,7 @@ class bittrex(Exchange):
             },
             'info': order,
             'trades': None,
-        })
+        }, market)
 
     def parse_orders(self, orders, market=None, since=None, limit=None, params={}):
         if self.options['fetchClosedOrdersFilterBySince']:
@@ -1192,6 +1199,7 @@ class bittrex(Exchange):
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': None,
             'info': response,
         }
 

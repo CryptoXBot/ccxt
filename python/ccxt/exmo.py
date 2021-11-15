@@ -423,6 +423,8 @@ class exmo(Exchange):
                 'quote': quote,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'type': 'spot',
+                'spot': True,
                 'active': True,
                 'taker': taker,
                 'maker': maker,
@@ -1080,6 +1082,7 @@ class exmo(Exchange):
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': None,
             'info': response,
         }
 

@@ -207,6 +207,8 @@ class hollaex extends Exchange {
                 'quote' => $quote,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
+                'type' => 'spot',
+                'spot' => true,
                 'active' => $active,
                 'precision' => array(
                     'price' => $this->safe_number($market, 'increment_price'),
@@ -808,11 +810,11 @@ class hollaex extends Exchange {
         $timestamp = $this->parse8601($this->safe_string($order, 'created_at'));
         $type = $this->safe_string($order, 'type');
         $side = $this->safe_string($order, 'side');
-        $price = $this->safe_number($order, 'price');
-        $amount = $this->safe_number($order, 'size');
-        $filled = $this->safe_number($order, 'filled');
+        $price = $this->safe_string($order, 'price');
+        $amount = $this->safe_string($order, 'size');
+        $filled = $this->safe_string($order, 'filled');
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'id' => $id,
             'clientOrderId' => null,
             'timestamp' => $timestamp,
@@ -834,7 +836,7 @@ class hollaex extends Exchange {
             'fee' => null,
             'info' => $order,
             'average' => null,
-        ));
+        ), $market);
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {

@@ -231,6 +231,7 @@ class bitmex extends Exchange {
             if ($tickSize !== null) {
                 $precision['price'] = $tickSize;
             }
+            $maxLeverage = $this->parse_number(Precise::string_div('1', $this->safe_string($market, 'initMargin', '1')));
             $limits = array(
                 'amount' => array(
                     'min' => null,
@@ -243,6 +244,9 @@ class bitmex extends Exchange {
                 'cost' => array(
                     'min' => null,
                     'max' => null,
+                ),
+                'leverage' => array(
+                    'max' => $maxLeverage,
                 ),
             );
             $limitField = ($position === $quote) ? 'cost' : 'amount';
@@ -1250,10 +1254,10 @@ class bitmex extends Exchange {
         $symbol = $this->safe_symbol($marketId, $market);
         $timestamp = $this->parse8601($this->safe_string($order, 'timestamp'));
         $lastTradeTimestamp = $this->parse8601($this->safe_string($order, 'transactTime'));
-        $price = $this->safe_number($order, 'price');
-        $amount = $this->safe_number($order, 'orderQty');
-        $filled = $this->safe_number($order, 'cumQty', 0.0);
-        $average = $this->safe_number($order, 'avgPx');
+        $price = $this->safe_string($order, 'price');
+        $amount = $this->safe_string($order, 'orderQty');
+        $filled = $this->safe_string($order, 'cumQty', 0.0);
+        $average = $this->safe_string($order, 'avgPx');
         $id = $this->safe_string($order, 'orderID');
         $type = $this->safe_string_lower($order, 'ordType');
         $side = $this->safe_string_lower($order, 'side');
@@ -1262,7 +1266,7 @@ class bitmex extends Exchange {
         $stopPrice = $this->safe_number($order, 'stopPx');
         $execInst = $this->safe_string($order, 'execInst');
         $postOnly = ($execInst === 'ParticipateDoNotInitiate');
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => $clientOrderId,
@@ -1284,7 +1288,7 @@ class bitmex extends Exchange {
             'status' => $status,
             'fee' => null,
             'trades' => null,
-        ));
+        ), $market);
     }
 
     public function fetch_trades($symbol, $since = null, $limit = null, $params = array ()) {

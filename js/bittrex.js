@@ -217,7 +217,9 @@ module.exports = class bittrex extends Exchange {
                 // 'createOrderMethod': 'create_order_v1',
             },
             'commonCurrencies': {
+                'BIFI': 'Bifrost Finance',
                 'MER': 'Mercury', // conflict with Mercurial Finance
+                'PROS': 'Pros.Finance',
                 'REPV2': 'REP',
                 'TON': 'Tokamak Network',
             },
@@ -280,6 +282,8 @@ module.exports = class bittrex extends Exchange {
                 'quote': quote,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'type': 'spot',
+                'spot': true,
                 'active': active,
                 'info': market,
                 'precision': precision,
@@ -295,6 +299,9 @@ module.exports = class bittrex extends Exchange {
                     'cost': {
                         'min': undefined,
                         'max': undefined,
+                    },
+                    'leverage': {
+                        'max': 1,
                     },
                 },
             });
@@ -665,7 +672,7 @@ module.exports = class bittrex extends Exchange {
         if (since !== undefined) {
             const now = this.milliseconds ();
             const difference = Math.abs (now - since);
-            const sinceDate = this.ymd (since);
+            const sinceDate = this.yyyymmdd (since);
             const parts = sinceDate.split ('-');
             const sinceYear = this.safeInteger (parts, 0);
             const sinceMonth = this.safeInteger (parts, 1);
@@ -1027,15 +1034,15 @@ module.exports = class bittrex extends Exchange {
         }
         const timestamp = this.parse8601 (createdAt);
         const type = this.safeStringLower (order, 'type');
-        const quantity = this.safeNumber (order, 'quantity');
-        const limit = this.safeNumber (order, 'limit');
-        const fillQuantity = this.safeNumber (order, 'fillQuantity');
+        const quantity = this.safeString (order, 'quantity');
+        const limit = this.safeString (order, 'limit');
+        const fillQuantity = this.safeString (order, 'fillQuantity');
         const commission = this.safeNumber (order, 'commission');
-        const proceeds = this.safeNumber (order, 'proceeds');
+        const proceeds = this.safeString (order, 'proceeds');
         const status = this.safeStringLower (order, 'status');
         const timeInForce = this.parseTimeInForce (this.safeString (order, 'timeInForce'));
         const postOnly = (timeInForce === 'PO');
-        return this.safeOrder ({
+        return this.safeOrder2 ({
             'id': this.safeString (order, 'id'),
             'clientOrderId': clientOrderId,
             'timestamp': timestamp,
@@ -1060,7 +1067,7 @@ module.exports = class bittrex extends Exchange {
             },
             'info': order,
             'trades': undefined,
-        });
+        }, market);
     }
 
     parseOrders (orders, market = undefined, since = undefined, limit = undefined, params = {}) {
@@ -1246,6 +1253,7 @@ module.exports = class bittrex extends Exchange {
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': undefined,
             'info': response,
         };
     }

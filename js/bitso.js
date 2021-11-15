@@ -218,6 +218,8 @@ module.exports = class bitso extends Exchange {
                 'info': market,
                 'limits': limits,
                 'precision': precision,
+                'type': 'spot',
+                'spot': true,
                 'active': undefined,
             }, fee));
         }
@@ -446,11 +448,11 @@ module.exports = class bitso extends Exchange {
         const symbol = this.safeSymbol (marketId, market, '_');
         const orderType = this.safeString (order, 'type');
         const timestamp = this.parse8601 (this.safeString (order, 'created_at'));
-        const price = this.safeNumber (order, 'price');
-        const amount = this.safeNumber (order, 'original_amount');
-        const remaining = this.safeNumber (order, 'unfilled_amount');
+        const price = this.safeString (order, 'price');
+        const amount = this.safeString (order, 'original_amount');
+        const remaining = this.safeString (order, 'unfilled_amount');
         const clientOrderId = this.safeString (order, 'client_id');
-        return this.safeOrder ({
+        return this.safeOrder2 ({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -472,7 +474,7 @@ module.exports = class bitso extends Exchange {
             'fee': undefined,
             'average': undefined,
             'trades': undefined,
-        });
+        }, market);
     }
 
     async fetchOpenOrders (symbol = undefined, since = undefined, limit = 25, params = {}) {
@@ -548,6 +550,7 @@ module.exports = class bitso extends Exchange {
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': undefined,
             'info': response,
         };
     }

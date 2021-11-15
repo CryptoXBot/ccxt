@@ -506,6 +506,7 @@ class bitfinex(Exchange):
                 'quoteId': quoteId,
                 'active': True,
                 'type': 'spot',
+                'spot': True,
                 'margin': margin,
                 'precision': precision,
                 'limits': limits,
@@ -860,7 +861,7 @@ class bitfinex(Exchange):
             orderType = parts[1]
         timestamp = self.safe_timestamp(order, 'timestamp')
         id = self.safe_string(order, 'id')
-        return self.safe_order({
+        return self.safe_order2({
             'info': order,
             'id': id,
             'clientOrderId': None,
@@ -872,17 +873,17 @@ class bitfinex(Exchange):
             'timeInForce': None,
             'postOnly': None,
             'side': side,
-            'price': self.safe_number(order, 'price'),
+            'price': self.safe_string(order, 'price'),
             'stopPrice': None,
-            'average': self.safe_number(order, 'avg_execution_price'),
-            'amount': self.safe_number(order, 'original_amount'),
-            'remaining': self.safe_number(order, 'remaining_amount'),
-            'filled': self.safe_number(order, 'executed_amount'),
+            'average': self.safe_string(order, 'avg_execution_price'),
+            'amount': self.safe_string(order, 'original_amount'),
+            'remaining': self.safe_string(order, 'remaining_amount'),
+            'filled': self.safe_string(order, 'executed_amount'),
             'status': status,
             'fee': None,
             'cost': None,
             'trades': None,
-        })
+        }, market)
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
         self.load_markets()
@@ -993,6 +994,7 @@ class bitfinex(Exchange):
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': None,
             'info': response,
         }
 

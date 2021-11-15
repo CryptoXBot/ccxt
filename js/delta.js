@@ -427,6 +427,7 @@ module.exports = class delta extends Exchange {
                 'baseId': baseId,
                 'quoteId': quoteId,
                 'type': type,
+                'spot': false,
                 'option': option,
                 'swap': swap,
                 'future': future,
@@ -918,10 +919,10 @@ module.exports = class delta extends Exchange {
         const side = this.safeString (order, 'side');
         let type = this.safeString (order, 'order_type');
         type = type.replace ('_order', '');
-        const price = this.safeNumber (order, 'limit_price');
-        const amount = this.safeNumber (order, 'size');
-        const remaining = this.safeNumber (order, 'unfilled_size');
-        const average = this.safeNumber (order, 'average_fill_price');
+        const price = this.safeString (order, 'limit_price');
+        const amount = this.safeString (order, 'size');
+        const remaining = this.safeString (order, 'unfilled_size');
+        const average = this.safeString (order, 'average_fill_price');
         let fee = undefined;
         const feeCost = this.safeNumber (order, 'paid_commission');
         if (feeCost !== undefined) {
@@ -936,7 +937,7 @@ module.exports = class delta extends Exchange {
                 'currency': feeCurrencyCode,
             };
         }
-        return this.safeOrder ({
+        return this.safeOrder2 ({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -955,7 +956,7 @@ module.exports = class delta extends Exchange {
             'status': status,
             'fee': fee,
             'trades': undefined,
-        });
+        }, market);
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
@@ -1407,6 +1408,7 @@ module.exports = class delta extends Exchange {
             'currency': code,
             'address': address,
             'tag': undefined,
+            'network': undefined,
             'info': response,
         };
     }

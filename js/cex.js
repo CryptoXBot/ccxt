@@ -330,6 +330,9 @@ module.exports = class cex extends Exchange {
                 'quote': quote,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'type': 'spot',
+                'spot': true,
+                'active': undefined,
                 'precision': precision,
                 'limits': {
                     'amount': {
@@ -345,7 +348,6 @@ module.exports = class cex extends Exchange {
                         'max': undefined,
                     },
                 },
-                'active': undefined,
             });
         }
         return result;
@@ -415,12 +417,9 @@ module.exports = class cex extends Exchange {
                 throw new ExchangeError (this.id + " fetchOHLCV warning: CEX can return historical candles for a certain date only, this might produce an empty or null reply. Set exchange.options['fetchOHLCVWarning'] = false or add ({ 'options': { 'fetchOHLCVWarning': false }}) to constructor params to suppress this warning message.");
             }
         }
-        let ymd = this.ymd (since);
-        ymd = ymd.split ('-');
-        ymd = ymd.join ('');
         const request = {
             'pair': market['id'],
-            'yyyymmdd': ymd,
+            'yyyymmdd': this.yyyymmdd (since, ''),
         };
         try {
             const response = await this.publicGetOhlcvHdYyyymmddPair (this.extend (request, params));
@@ -1267,6 +1266,7 @@ module.exports = class cex extends Exchange {
             'currency': code,
             'address': address,
             'tag': undefined,
+            'network': undefined,
             'info': response,
         };
     }

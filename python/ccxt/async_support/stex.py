@@ -393,6 +393,8 @@ class stex(Exchange):
                 'baseNumericId': baseNumericId,
                 'quoteNumericId': quoteNumericId,
                 'info': market,
+                'type': 'spot',
+                'spot': True,
                 'active': active,
                 'maker': fee,
                 'taker': fee,
@@ -1392,6 +1394,7 @@ class stex(Exchange):
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': None,
             'info': response,
         }
 

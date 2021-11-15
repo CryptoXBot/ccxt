@@ -390,6 +390,8 @@ class stex extends Exchange {
                 'baseNumericId' => $baseNumericId,
                 'quoteNumericId' => $quoteNumericId,
                 'info' => $market,
+                'type' => 'spot',
+                'spot' => true,
                 'active' => $active,
                 'maker' => $fee,
                 'taker' => $fee,
@@ -1445,6 +1447,7 @@ class stex extends Exchange {
             'currency' => $code,
             'address' => $address,
             'tag' => $tag,
+            'network' => null,
             'info' => $response,
         );
     }

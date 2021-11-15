@@ -263,6 +263,8 @@ class bytetrade extends Exchange {
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
                 'info' => $market,
+                'type' => 'spot',
+                'spot' => true,
                 'active' => $active,
                 'precision' => array(
                     'amount' => $this->safe_integer($precision, 'amount'),
@@ -567,12 +569,12 @@ class bytetrade extends Exchange {
         $timestamp = $this->safe_integer($order, 'timestamp');
         $datetime = $this->safe_string($order, 'datetime');
         $lastTradeTimestamp = $this->safe_integer($order, 'lastTradeTimestamp');
-        $price = $this->safe_number($order, 'price');
-        $amount = $this->safe_number($order, 'amount');
-        $filled = $this->safe_number($order, 'filled');
-        $remaining = $this->safe_number($order, 'remaining');
-        $cost = $this->safe_number($order, 'cost');
-        $average = $this->safe_number($order, 'average');
+        $price = $this->safe_string($order, 'price');
+        $amount = $this->safe_string($order, 'amount');
+        $filled = $this->safe_string($order, 'filled');
+        $remaining = $this->safe_string($order, 'remaining');
+        $cost = $this->safe_string($order, 'cost');
+        $average = $this->safe_string($order, 'average');
         $id = $this->safe_string($order, 'id');
         $type = $this->safe_string($order, 'type');
         $side = $this->safe_string($order, 'side');
@@ -586,7 +588,7 @@ class bytetrade extends Exchange {
             'cost' => $feeCost,
             'rate' => $feeRate,
         );
-        return array(
+        return $this->safe_order2(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,
@@ -608,7 +610,7 @@ class bytetrade extends Exchange {
             'status' => $status,
             'fee' => $fee,
             'trades' => null,
-        );
+        ), $market);
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
@@ -1134,7 +1136,7 @@ class bytetrade extends Exchange {
             'currency' => $code,
             'address' => $address,
             'tag' => $tag,
-            'chainType' => $chainType,
+            'network' => $chainType,
             'info' => $response,
         );
     }

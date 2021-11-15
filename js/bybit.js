@@ -29,6 +29,7 @@ module.exports = class bybit extends Exchange {
                 'fetchClosedOrders': true,
                 'fetchDeposits': true,
                 'fetchFundingRate': true,
+                'fetchFundingRateHistory': false,
                 'fetchIndexOHLCV': true,
                 'fetchLedger': true,
                 'fetchMarkets': true,
@@ -273,6 +274,7 @@ module.exports = class bybit extends Exchange {
             },
             'exceptions': {
                 'exact': {
+                    '-2015': AuthenticationError, // Invalid API-key, IP, or permissions for action.
                     '10001': BadRequest, // parameter error
                     '10002': InvalidNonce, // request expired, check your timestamp and recv_window
                     '10003': AuthenticationError, // Invalid apikey
@@ -516,6 +518,7 @@ module.exports = class bybit extends Exchange {
                 'amount': this.safeNumber (lotSizeFilter, 'qty_step'),
                 'price': this.safeNumber (priceFilter, 'tick_size'),
             };
+            const leverage = this.safeValue (market, 'leverage_filter', {});
             const status = this.safeString (market, 'status');
             let active = undefined;
             if (status !== undefined) {
@@ -553,6 +556,9 @@ module.exports = class bybit extends Exchange {
                     'cost': {
                         'min': undefined,
                         'max': undefined,
+                    },
+                    'leverage': {
+                        'max': this.safeNumber (leverage, 'max_leverage', 1),
                     },
                 },
                 'info': market,
@@ -865,7 +871,7 @@ module.exports = class bybit extends Exchange {
         const request = {
             'symbol': market['id'],
         };
-        const method = 'v2PublicGetFundingPrevFundingRate';
+        const method = market['linear'] ? 'publicLinearGetFundingPrevFundingRate' : 'v2PublicGetFundingPrevFundingRate';
         const response = await this[method] (this.extend (request, params));
         //
         // {
@@ -885,18 +891,24 @@ module.exports = class bybit extends Exchange {
         // }
         //
         const result = this.safeValue (response, 'result');
-        const lastFundingRate = this.safeNumber (result, 'funding_rate');
-        const lastFundingTime = this.safeInteger (result, 'funding_rate_timestamp') * 1000;
-        const nextFundingTime = lastFundingTime + (8 * 3600000);
+        const nextFundingRate = this.safeNumber (result, 'funding_rate');
+        const previousFundingTime = this.safeInteger (result, 'funding_rate_timestamp') * 1000;
+        const nextFundingTime = previousFundingTime + (8 * 3600000);
         const currentTime = this.milliseconds ();
         return {
+            'info': result,
             'symbol': symbol,
+            'markPrice': undefined,
+            'indexPrice': undefined,
+            'interestRate': undefined,
+            'estimatedSettlePrice': undefined,
             'timestamp': currentTime,
             'datetime': this.iso8601 (currentTime),
-            'lastFundingRate': lastFundingRate,
-            'lastFundingTimestamp': lastFundingTime,
+            'previousFundingRate': undefined,
+            'nextFundingRate': nextFundingRate,
+            'previousFundingTimestamp': previousFundingTime,
             'nextFundingTimestamp': nextFundingTime,
-            'lastFundingDatetime': this.iso8601 (lastFundingTime),
+            'previousFundingDatetime': this.iso8601 (previousFundingTime),
             'nextFundingDatetime': this.iso8601 (nextFundingTime),
         };
     }
@@ -1295,15 +1307,12 @@ module.exports = class bybit extends Exchange {
         const timestamp = this.parse8601 (this.safeString (order, 'created_at'));
         const id = this.safeString2 (order, 'order_id', 'stop_order_id');
         const type = this.safeStringLower (order, 'order_type');
-        let price = this.safeNumber (order, 'price');
-        if (price === 0.0) {
-            price = undefined;
-        }
-        const average = this.safeNumber (order, 'average_price');
-        const amount = this.safeNumber (order, 'qty');
-        const cost = this.safeNumber (order, 'cum_exec_value');
-        const filled = this.safeNumber (order, 'cum_exec_qty');
-        const remaining = this.safeNumber (order, 'leaves_qty');
+        const price = this.safeString (order, 'price');
+        const average = this.safeString (order, 'average_price');
+        const amount = this.safeString (order, 'qty');
+        const cost = this.safeString (order, 'cum_exec_value');
+        const filled = this.safeString (order, 'cum_exec_qty');
+        const remaining = this.safeString (order, 'leaves_qty');
         const marketTypes = this.safeValue (this.options, 'marketTypes', {});
         const marketType = this.safeString (marketTypes, symbol);
         if (market !== undefined) {
@@ -1319,10 +1328,10 @@ module.exports = class bybit extends Exchange {
         }
         const status = this.parseOrderStatus (this.safeString2 (order, 'order_status', 'stop_order_status'));
         const side = this.safeStringLower (order, 'side');
-        let feeCost = this.safeNumber (order, 'cum_exec_fee');
+        const feeCostString = this.safeString (order, 'cum_exec_fee');
+        const feeCost = this.parseNumber (Precise.stringAbs (feeCostString));
         let fee = undefined;
         if (feeCost !== undefined) {
-            feeCost = Math.abs (feeCost);
             fee = {
                 'cost': feeCost,
                 'currency': feeCurrency,
@@ -1335,7 +1344,7 @@ module.exports = class bybit extends Exchange {
         const timeInForce = this.parseTimeInForce (this.safeString (order, 'time_in_force'));
         const stopPrice = this.safeNumber2 (order, 'trigger_price', 'stop_px');
         const postOnly = (timeInForce === 'PO');
-        return this.safeOrder ({
+        return this.safeOrder2 ({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -1357,7 +1366,7 @@ module.exports = class bybit extends Exchange {
             'status': status,
             'fee': fee,
             'trades': undefined,
-        });
+        }, market);
     }
 
     async fetchOrder (id, symbol = undefined, params = {}) {
@@ -2153,7 +2162,7 @@ module.exports = class bybit extends Exchange {
             request['coin'] = currency['id'];
         }
         if (since !== undefined) {
-            request['start_date'] = this.ymd (since);
+            request['start_date'] = this.yyyymmdd (since);
         }
         if (limit !== undefined) {
             request['limit'] = limit;
@@ -2209,7 +2218,7 @@ module.exports = class bybit extends Exchange {
             request['coin'] = currency['id'];
         }
         if (since !== undefined) {
-            request['start_date'] = this.ymd (since);
+            request['start_date'] = this.yyyymmdd (since);
         }
         if (limit !== undefined) {
             request['limit'] = limit;
@@ -2349,7 +2358,7 @@ module.exports = class bybit extends Exchange {
             request['coin'] = currency['id'];
         }
         if (since !== undefined) {
-            request['start_date'] = this.ymd (since);
+            request['start_date'] = this.yyyymmdd (since);
         }
         if (limit !== undefined) {
             request['limit'] = limit;
@@ -2563,7 +2572,7 @@ module.exports = class bybit extends Exchange {
         }
     }
 
-    async setMarginMode (symbol, marginType, params = {}) {
+    async setMarginMode (marginType, symbol = undefined, params = {}) {
         //
         // {
         //     "ret_code": 0,
@@ -2611,7 +2620,7 @@ module.exports = class bybit extends Exchange {
         return await this[method] (this.extend (request, params));
     }
 
-    async setLeverage (leverage = undefined, symbol = undefined, params = {}) {
+    async setLeverage (leverage, symbol = undefined, params = {}) {
         if (symbol === undefined) {
             throw new ArgumentsRequired (this.id + ' setLeverage() requires a symbol argument');
         }

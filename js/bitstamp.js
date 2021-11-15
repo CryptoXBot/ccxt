@@ -4,6 +4,7 @@
 
 const Exchange = require ('./base/Exchange');
 const { AuthenticationError, BadRequest, ExchangeError, NotSupported, PermissionDenied, InvalidNonce, OrderNotFound, InsufficientFunds, InvalidAddress, InvalidOrder, ArgumentsRequired, OnMaintenance, ExchangeNotAvailable } = require ('./base/errors');
+const Precise = require ('./base/Precise');
 
 //  ---------------------------------------------------------------------------
 
@@ -179,6 +180,16 @@ module.exports = class bitstamp extends Exchange {
                         'sand_address/',
                         'hbar_withdrawal/',
                         'hbar_address/',
+                        'rgt_withdrawal/',
+                        'rgt_address/',
+                        'fet_withdrawal/',
+                        'fet_address/',
+                        'skl_withdrawal/',
+                        'skl_address/',
+                        'cel_withdrawal/',
+                        'cel_address/',
+                        'sxp_withdrawal/',
+                        'sxp_address/',
                         'transfer-to-main/',
                         'transfer-from-main/',
                         'withdrawal-requests/',
@@ -188,6 +199,7 @@ module.exports = class bitstamp extends Exchange {
                         'liquidation_address/new/',
                         'liquidation_address/info/',
                         'btc_unconfirmed/',
+                        'websockets_token/',
                     ],
                 },
             },
@@ -318,6 +330,8 @@ module.exports = class bitstamp extends Exchange {
                 'quoteId': quoteId,
                 'symbolId': symbolId,
                 'info': market,
+                'type': 'spot',
+                'spot': true,
                 'active': active,
                 'precision': precision,
                 'limits': {
@@ -694,7 +708,9 @@ module.exports = class bitstamp extends Exchange {
 
     parseTradingFee (balances, symbol) {
         const market = this.market (symbol);
-        const tradeFee = this.safeNumber (balances, market['id'] + '_fee');
+        const feeString = this.safeString (balances, market['id'] + '_fee');
+        const dividedFeeString = Precise.stringDiv (feeString, '100');
+        const tradeFee = this.parseNumber (dividedFeeString);
         return {
             'symbol': symbol,
             'maker': tradeFee,
@@ -1497,6 +1513,7 @@ module.exports = class bitstamp extends Exchange {
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': undefined,
             'info': response,
         };
     }

@@ -195,7 +195,6 @@ class bw(Exchange):
             fee = self.safe_number(market, 'defaultFee')
             result.append({
                 'id': id,
-                'active': active,
                 'numericId': numericId,
                 'symbol': symbol,
                 'base': base,
@@ -204,6 +203,9 @@ class bw(Exchange):
                 'quoteId': quoteId,
                 'baseNumericId': baseNumericId,
                 'quoteNumericId': quoteNumericId,
+                'type': 'spot',
+                'spot': True,
+                'active': active,
                 'maker': fee,
                 'taker': fee,
                 'info': market,
@@ -703,13 +705,13 @@ class bw(Exchange):
             side = 'sell'
         elif side == '1':
             side = 'buy'
-        amount = self.safe_number(order, 'amount')
-        price = self.safe_number(order, 'price')
-        filled = self.safe_number(order, 'completeAmount')
-        remaining = self.safe_number_2(order, 'availabelAmount', 'availableAmount')  # typo in the docs or in the API, availabel vs available
-        cost = self.safe_number(order, 'totalMoney')
+        amount = self.safe_string(order, 'amount')
+        price = self.safe_string(order, 'price')
+        filled = self.safe_string(order, 'completeAmount')
+        remaining = self.safe_string_2(order, 'availabelAmount', 'availableAmount')  # typo in the docs or in the API, availabel vs available
+        cost = self.safe_string(order, 'totalMoney')
         status = self.parse_order_status(self.safe_string(order, 'status'))
-        return self.safe_order({
+        return self.safe_order2({
             'info': order,
             'id': self.safe_string(order, 'entrustId'),
             'clientOrderId': None,
@@ -731,7 +733,7 @@ class bw(Exchange):
             'status': status,
             'fee': None,
             'trades': None,
-        })
+        }, market)
 
     def fetch_order(self, id, symbol=None, params={}):
         if symbol is None:
@@ -951,6 +953,7 @@ class bw(Exchange):
             'currency': code,
             'address': self.check_address(address),
             'tag': tag,
+            'network': None,
             'info': response,
         }
 

@@ -3,7 +3,7 @@ The ccxt library is a collection of available crypto *exchanges* or exchange cla
 
 The structure of the library can be outlined as follows:
 
-.. code-block::
+.. code-block:: text
 
                                     User
        +-------------------------------------------------------------+
@@ -147,11 +147,11 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
      - 
      - 
    * - .. image:: https://user-images.githubusercontent.com/1294454/29604020-d5483cdc-87ee-11e7-94c7-d1a8d9169293.jpg
-          :target: https://www.binance.com/en/register?ref=BLEJC98C
+          :target: https://www.binance.com
           :alt: binance
      
      - binance
-     - `Binance <https://www.binance.com/en/register?ref=BLEJC98C>`__
+     - `Binance <https://www.binance.com>`__
      - .. image:: https://img.shields.io/badge/*-lightgray
           :target: https://binance-docs.github.io/apidocs/spot/en
           :alt: API Version *
@@ -165,11 +165,11 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
           :alt: CCXT Pro
      
    * - .. image:: https://user-images.githubusercontent.com/1294454/117738721-668c8d80-b205-11eb-8c49-3fad84c4a07f.jpg
-          :target: https://www.binance.com/en/register?ref=BLEJC98C
+          :target: https://www.binance.com
           :alt: binancecoinm
      
      - binancecoinm
-     - `Binance COIN-M <https://www.binance.com/en/register?ref=BLEJC98C>`__
+     - `Binance COIN-M <https://www.binance.com>`__
      - .. image:: https://img.shields.io/badge/*-lightgray
           :target: https://binance-docs.github.io/apidocs/delivery/en/
           :alt: API Version *
@@ -198,11 +198,11 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
           :alt: CCXT Pro
      
    * - .. image:: https://user-images.githubusercontent.com/1294454/117738721-668c8d80-b205-11eb-8c49-3fad84c4a07f.jpg
-          :target: https://www.binance.com/en/register?ref=BLEJC98C
+          :target: https://www.binance.com
           :alt: binanceusdm
      
      - binanceusdm
-     - `Binance USDⓈ-M <https://www.binance.com/en/register?ref=BLEJC98C>`__
+     - `Binance USDⓈ-M <https://www.binance.com>`__
      - .. image:: https://img.shields.io/badge/*-lightgray
           :target: https://binance-docs.github.io/apidocs/futures/en/
           :alt: API Version *
@@ -257,9 +257,9 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
      
      - bitbns
      - `Bitbns <https://ref.bitbns.com/1090961>`__
-     - .. image:: https://img.shields.io/badge/*-lightgray
+     - .. image:: https://img.shields.io/badge/2-lightgray
           :target: https://bitbns.com/trade/#/api-trading/
-          :alt: API Version *
+          :alt: API Version 2
      
      - 
      - 
@@ -398,6 +398,18 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
      
      - 
      - 
+   * - .. image:: https://user-images.githubusercontent.com/1294454/139516488-243a830d-05dd-446b-91c6-c1f18fe30c63.jpg
+          :target: https://www.bitrue.com/activity/task/task-landing?inviteCode=EZWETQE&cn=900000
+          :alt: bitrue
+     
+     - bitrue
+     - `Bitrue <https://www.bitrue.com/activity/task/task-landing?inviteCode=EZWETQE&cn=900000>`__
+     - .. image:: https://img.shields.io/badge/1-lightgray
+          :target: https://github.com/Bitrue-exchange/bitrue-official-api-docs
+          :alt: API Version 1
+     
+     - 
+     - 
    * - .. image:: https://user-images.githubusercontent.com/51840849/87295554-11f98280-c50e-11ea-80d6-15b3bafa8cbf.jpg
           :target: https://bitso.com/?ref=itej
           :alt: bitso
@@ -470,18 +482,6 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
           :target: https://ccxt.pro
           :alt: CCXT Pro
      
-   * - .. image:: https://user-images.githubusercontent.com/51840849/87443304-fec5e000-c5fd-11ea-98f8-ba8e67f7eaff.jpg
-          :target: https://u.bitz.com/register?invite_code=1429193
-          :alt: bitz
-     
-     - bitz
-     - `Bit-Z <https://u.bitz.com/register?invite_code=1429193>`__
-     - .. image:: https://img.shields.io/badge/2-lightgray
-          :target: https://apidocv2.bitz.plus/en/
-          :alt: API Version 2
-     
-     - 
-     - 
    * - .. image:: https://user-images.githubusercontent.com/1294454/28501752-60c21b82-6feb-11e7-818b-055ee6d0e754.jpg
           :target: https://bl3p.eu
           :alt: bl3p
@@ -490,18 +490,6 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
      - `BL3P <https://bl3p.eu>`__
      - .. image:: https://img.shields.io/badge/1-lightgray
           :target: https://github.com/BitonicNL/bl3p-api/tree/master/docs
-          :alt: API Version 1
-     
-     - 
-     - 
-   * - .. image:: https://user-images.githubusercontent.com/1294454/42625213-dabaa5da-85cf-11e8-8f99-aa8f8f7699f0.jpg
-          :target: https://btc-alpha.com/?r=123788
-          :alt: btcalpha
-     
-     - btcalpha
-     - `BTC-Alpha <https://btc-alpha.com/?r=123788>`__
-     - .. image:: https://img.shields.io/badge/1-lightgray
-          :target: https://btc-alpha.github.io/api-docs
           :alt: API Version 1
      
      - 
@@ -664,18 +652,6 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
      - `coincheck <https://coincheck.com>`__
      - .. image:: https://img.shields.io/badge/*-lightgray
           :target: https://coincheck.com/documents/exchange/api
-          :alt: API Version *
-     
-     - 
-     - 
-   * - .. image:: https://user-images.githubusercontent.com/1294454/36770310-adfa764e-1c5a-11e8-8e09-449daac3d2fb.jpg
-          :target: https://www.coinegg.com/user/register?invite=523218
-          :alt: coinegg
-     
-     - coinegg
-     - `CoinEgg <https://www.coinegg.com/user/register?invite=523218>`__
-     - .. image:: https://img.shields.io/badge/*-lightgray
-          :target: https://www.coinegg.com/explain.api.html
           :alt: API Version *
      
      - 
@@ -854,18 +830,6 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
      
      - 
      - 
-   * - .. image:: https://user-images.githubusercontent.com/1294454/37770292-fbf613d0-2de4-11e8-9f79-f2dc451b8ccb.jpg
-          :target: https://www.exx.com/r/fde4260159e53ab8a58cc9186d35501f?recommQd=1
-          :alt: exx
-     
-     - exx
-     - `EXX <https://www.exx.com/r/fde4260159e53ab8a58cc9186d35501f?recommQd=1>`__
-     - .. image:: https://img.shields.io/badge/*-lightgray
-          :target: https://www.exx.com/help/restApi
-          :alt: API Version *
-     
-     - 
-     - 
    * - .. image:: https://user-images.githubusercontent.com/51840849/87443317-01c0d080-c5fe-11ea-95c2-9ebe1a8fafd9.jpg
           :target: https://www.flowbtc.com.br
           :alt: flowbtc
@@ -892,6 +856,21 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
           :target: https://github.com/ccxt/ccxt/wiki/Certification
           :alt: CCXT Certified
      
+     - .. image:: https://img.shields.io/badge/CCXT-Pro-black
+          :target: https://ccxt.pro
+          :alt: CCXT Pro
+     
+   * - .. image:: https://user-images.githubusercontent.com/1294454/141506670-12f6115f-f425-4cd8-b892-b51d157ca01f.jpg
+          :target: https://ftx.com/#a=ccxt
+          :alt: ftxus
+     
+     - ftxus
+     - `FTX US <https://ftx.com/#a=ccxt>`__
+     - .. image:: https://img.shields.io/badge/*-lightgray
+          :target: https://github.com/ftexchange/ftx
+          :alt: API Version *
+     
+     - 
      - .. image:: https://img.shields.io/badge/CCXT-Pro-black
           :target: https://ccxt.pro
           :alt: CCXT Pro
@@ -941,6 +920,21 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
           :target: https://ccxt.pro
           :alt: CCXT Pro
      
+   * - .. image:: https://user-images.githubusercontent.com/1294454/27766555-8eaec20e-5edc-11e7-9c5b-6dc69fc42f5e.jpg
+          :target: https://hitbtc.com/?ref_id=5a5d39a65d466
+          :alt: hitbtc3
+     
+     - hitbtc3
+     - `HitBTC <https://hitbtc.com/?ref_id=5a5d39a65d466>`__
+     - .. image:: https://img.shields.io/badge/3-lightgray
+          :target: https://api.hitbtc.com
+          :alt: API Version 3
+     
+     - 
+     - .. image:: https://img.shields.io/badge/CCXT-Pro-black
+          :target: https://ccxt.pro
+          :alt: CCXT Pro
+     
    * - .. image:: https://user-images.githubusercontent.com/1294454/75841031-ca375180-5ddd-11ea-8417-b975674c23cb.jpg
           :target: https://pro.hollaex.com/signup?affiliation_code=QSWA6G
           :alt: hollaex
@@ -954,11 +948,11 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
      - 
      - 
    * - .. image:: https://user-images.githubusercontent.com/1294454/76137448-22748a80-604e-11ea-8069-6e389271911d.jpg
-          :target: https://www.huobi.com/en-us/topic/double-reward/?invite_code=6rmm2223
+          :target: https://www.huobi.com
           :alt: huobi
      
      - huobi
-     - `Huobi <https://www.huobi.com/en-us/topic/double-reward/?invite_code=6rmm2223>`__
+     - `Huobi <https://www.huobi.com>`__
      - .. image:: https://img.shields.io/badge/1-lightgray
           :target: https://huobiapi.github.io/docs/spot/v1/cn/
           :alt: API Version 1
@@ -1068,11 +1062,23 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
      - 
      - 
    * - .. image:: https://user-images.githubusercontent.com/1294454/61511972-24c39f00-aa01-11e9-9f7c-471f1d6e5214.jpg
-          :target: https://latoken.com
+          :target: https://latoken.com/invite?r=mvgp2djk
           :alt: latoken
      
      - latoken
-     - `Latoken <https://latoken.com>`__
+     - `Latoken <https://latoken.com/invite?r=mvgp2djk>`__
+     - .. image:: https://img.shields.io/badge/2-lightgray
+          :target: https://api.latoken.com
+          :alt: API Version 2
+     
+     - 
+     - 
+   * - .. image:: https://user-images.githubusercontent.com/1294454/61511972-24c39f00-aa01-11e9-9f7c-471f1d6e5214.jpg
+          :target: https://latoken.com/invite?r=mvgp2djk
+          :alt: latoken1
+     
+     - latoken1
+     - `Latoken <https://latoken.com/invite?r=mvgp2djk>`__
      - .. image:: https://img.shields.io/badge/1-lightgray
           :target: https://api.latoken.com
           :alt: API Version 1
@@ -1139,17 +1145,20 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
      
      - 
      - 
-   * - .. image:: https://user-images.githubusercontent.com/51840849/87460810-1dd06c00-c616-11ea-9276-956f400d6ffa.jpg
-          :target: https://mixcoins.com
-          :alt: mixcoins
+   * - .. image:: https://user-images.githubusercontent.com/1294454/137283979-8b2a818d-8633-461b-bfca-de89e8c446b2.jpg
+          :target: https://m.mexc.com/auth/signup?inviteCode=1FQ1G
+          :alt: mexc
      
-     - mixcoins
-     - `MixCoins <https://mixcoins.com>`__
-     - .. image:: https://img.shields.io/badge/1-lightgray
-          :target: https://mixcoins.com/help/api/
-          :alt: API Version 1
+     - mexc
+     - `MEXC Global <https://m.mexc.com/auth/signup?inviteCode=1FQ1G>`__
+     - .. image:: https://img.shields.io/badge/2-lightgray
+          :target: https://mxcdevelop.github.io/APIDoc/
+          :alt: API Version 2
      
-     - 
+     - .. image:: https://img.shields.io/badge/CCXT-Certified-green.svg
+          :target: https://github.com/ccxt/ccxt/wiki/Certification
+          :alt: CCXT Certified
+     
      - 
    * - .. image:: https://user-images.githubusercontent.com/1294454/108623144-67a3ef00-744e-11eb-8140-75c6b851e945.jpg
           :target: https://one.ndax.io/bfQiSL
@@ -1206,13 +1215,13 @@ The CCXT library currently supports the following 107 cryptocurrency exchange ma
           :alt: CCXT Pro
      
    * - .. image:: https://user-images.githubusercontent.com/1294454/32552768-0d6dd3c6-c4a6-11e7-90f8-c043b64756a7.jpg
-          :target: https://www.okex.com/join/1888677
+          :target: https://www.okex.com
           :alt: okex
      
      - okex
-     - `OKEX <https://www.okex.com/join/1888677>`__
+     - `OKEX <https://www.okex.com>`__
      - .. image:: https://img.shields.io/badge/5-lightgray
-          :target: https://www.okex.com/docs/en/
+          :target: https://www.okex.com/docs-v5/en/
           :alt: API Version 5
      
      - .. image:: https://img.shields.io/badge/CCXT-Certified-green.svg
@@ -2536,7 +2545,7 @@ It depends on which exchange you are using, but some of them have a reversed (in
 
 For those exchanges the ccxt will do a correction, switching and normalizing sides of base and quote currencies when parsing exchange replies. This logic is financially and terminologically correct. If you want less confusion, remember the following rule: **base is always before the slash, quote is always after the slash in any symbol and with any market**.
 
-.. code-block::
+.. code-block:: text
 
    base currency ↓
                 BTC / USDT
@@ -2626,7 +2635,7 @@ The recommended way of working with exchanges is not using exchange-specific imp
 
 To get a list of all available methods with an exchange instance, including implicit methods and unified methods you can simply do the following:
 
-.. code-block::
+.. code-block:: text
 
    console.log (new ccxt.kraken ())   // JavaScript
    print(dir(ccxt.hitbtc()))           # Python
@@ -2674,7 +2683,7 @@ A few exchanges also expose a merchant API which allows you to create invoices a
 
 To get a list of all available methods with an exchange instance, you can simply do the following:
 
-.. code-block::
+.. code-block:: text
 
    console.log (new ccxt.kraken ())   // JavaScript
    print(dir(ccxt.hitbtc()))           # Python
@@ -2716,7 +2725,7 @@ The ccxt library supports asynchronous concurrency mode in Python 3.5+ with asyn
        poloniex = ccxt.poloniex()
        print(await poloniex.fetch_ticker('ETH/BTC'))
 
-   asyncio.get_event_loop().run_until_complete(print_poloniex_ethbtc_ticker())
+   asyncio.run(print_poloniex_ethbtc_ticker())
 
 PHP
 ^^^
@@ -2752,7 +2761,7 @@ Passing Parameters To API Methods
 
 The set of all possible API endpoints differs from exchange to exchange. Most of methods accept a single associative array (or a Python dict) of key-value parameters. The params are passed as follows:
 
-.. code-block::
+.. code-block:: text
 
    bitso.publicGetTicker ({ book: 'eth_mxn' })                 // JavaScript
    ccxt.zaif().public_get_ticker_pair ({ 'pair': 'btc_jpy' })  # Python
@@ -2796,14 +2805,14 @@ An exchange method name is a concatenated string consisting of type (public or p
 
 The ccxt library supports both camelcase notation (preferred in JavaScript) and underscore notation (preferred in Python and PHP), therefore all methods can be called in either notation or coding style in any language. Both of these notations work in JavaScript, Python and PHP:
 
-.. code-block::
+.. code-block:: text
 
    exchange.methodName ()  // camelcase pseudocode
    exchange.method_name()  // underscore pseudocode
 
 To get a list of all available methods with an exchange instance, you can simply do the following:
 
-.. code-block::
+.. code-block:: text
 
    console.log (new ccxt.kraken ())   // JavaScript
    print(dir(ccxt.hitbtc()))           # Python
@@ -2839,7 +2848,7 @@ The unified ccxt API is a subset of methods common among the exchanges. It curre
  * ``fetchMyTrades ([symbol[, since[, limit[, params]]]])``
  * ...
 
-.. code-block::
+.. code-block:: text
 
    TODO: ADD LINKS ABOVE
 
@@ -3372,7 +3381,7 @@ Notes On Ticker Structure
 
  **All prices in ticker structure are in quote currency. Some fields in a returned ticker structure may be undefined/None/null.**
 
-.. code-block::
+.. code-block:: text
 
    base currency ↓
                 BTC / USDT
@@ -3392,7 +3401,7 @@ Timestamp and datetime are both Universal Time Coordinated (UTC) in milliseconds
 
 Although some exchanges do mix-in orderbook's top bid/ask prices into their tickers (and some exchanges even serve top bid/ask volumes) you should not treat a ticker as a ``fetchOrderBook`` replacement. The main purpose of a ticker is to serve statistical data, as such, treat it as "live 24h OHLCV". It is known that exchanges discourage frequent ``fetchTicker`` requests by imposing stricter rate limits on these queries. If you need a unified way to access bids and asks you should use ``fetchL[123]OrderBook`` family instead.
 
-To get historical prices and volumes use the unified :ref:`\ ``fetchOHLCV`` <ohlcv candlestick charts>` method where available.
+To get historical prices and volumes use the unified :ref:`\ ``fetchOHLCV`` <ohlcv candlestick charts>` method where available. To get historical mark, index, and premium index prices, add one of ``'price': 'mark'``\ , ``'price': 'index'``\ , ``'price': 'premiumIndex'`` respectively to the :ref:`params-overrides <overriding unified api params>` of ``fetchOHLCV``. There are also convenience methods ``fetchMarkPriceOHLCV``\ , ``fetchIndexPriceOHLCV``\ , and ``fetchPremiumIndexOHLCV`` that obtain the mark, index and premiumIndex historical prices and volumes.
 
 Methods for fetching tickers:
 
@@ -3500,14 +3509,7 @@ The structure of the returned value is as follows:
 
 A general solution for fetching all tickers from all exchanges (even the ones that don't have a corresponding API endpoint) is on the way, this section will be updated soon.
 
-.. code-block::
-
-   UNDER CONSTRUCTION
-
-Async Mode / Concurrency
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block::
+.. code-block:: text
 
    UNDER CONSTRUCTION
 
@@ -3522,7 +3524,7 @@ Most exchanges have endpoints for fetching OHLCV data, but some of them don't. T
 
 The ``fetchOHLCV`` method is declared in the following way:
 
-.. code-block::
+.. code-block:: JavaScript
 
    fetchOHLCV (symbol, timeframe = '1m', since = undefined, limit = undefined, params = {})
 
@@ -3593,6 +3595,56 @@ The fetchOHLCV method shown above returns a list (a flat array) of OHLCV candles
 
 The list of candles is returned sorted in ascending (historical/chronological) order, oldest candle first, most recent candle last.
 
+Mark, Index and PremiumIndex Candlestick Charts
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To obtain historical Mark, Index Price and Premium Index candlesticks pass the ``'price'`` :doc:`params-override <overriding unified api params>` to ``fetchOHLCV``. The ``'price'`` parameter accepts one of the following values:
+
+
+ * ``'mark'``
+ * ``'index'``
+ * ``'premiumIndex'``
+
+.. code-block:: JavaScript
+
+   // JavaScript
+   async function main () {
+       const exchange = new ccxt.binanceusdm ()
+       const markKlines = await exchange.fetchOHLCV ('ADA/USDT', '1h', undefined, undefined, { 'price': 'mark' })
+       console.log (markKlines)
+       const indexKlines = await exchange.fetchOHLCV ('ADA/USDT', '1h', undefined, undefined, { 'price': 'index' })
+       console.log (indexKlines)
+   }
+
+   main ()
+
+There are also convenience methods ``fetchMarkOHLCV``\ , ``fetchIndexOHLCV`` and ``fetchPremiumIndexOHLCV``
+
+.. code-block:: JavaScript
+
+   // JavaScript
+   async function main () {
+       const exchange = new ccxt.binanceusdm ()
+       const markKlines = await exchange.fetchMarkOHLCV ('ADA/USDT', '1h')
+       console.log (markKlines)
+       const indexKlines = await exchange.fetchIndexOHLCV ('ADA/USDT', '1h')
+       console.log (indexKlines)
+   }
+
+   main ()
+
+.. code-block:: Python
+
+   # Python
+   exchange = ccxt.binance()
+   response = exchange.fetch_ohlcv('ADA/USDT', '1h', params={'price':'index'})
+   pprint(response)
+   # Convenience methods
+   mark_klines = exchange.fetch_mark_ohlcv('ADA/USDT', '1h')
+   index_klines = exchange.fetch_index_ohlcv('ADA/USDT', '1h')
+   pprint(mark_klines)
+   pprint(index_klines)
+
 OHLCV Emulation
 ^^^^^^^^^^^^^^^
 
@@ -3600,7 +3652,7 @@ Some exchanges don't offer any OHLCV method, and for those, the ccxt library wil
 
  **WARNING: the fetchOHLCV emulation is experimental!**
 
-.. code-block::
+.. code-block:: text
 
    UNDER CONSTRUCTION
 
@@ -3613,7 +3665,7 @@ Public Trades
 
 You can call the unified ``fetchTrades`` / ``fetch_trades`` method to get the list of most recent trades for a particular symbol. The ``fetchTrades`` method is declared in the following way:
 
-.. code-block::
+.. code-block:: JavaScript
 
    async fetchTrades (symbol, since = undefined, limit = undefined, params = {})
 
@@ -4206,7 +4258,7 @@ Below are examples of using the fetchOrder method to get order info from an auth
    import asyncio
    import ccxt.async_support as ccxt
    if exchange.has['fetchOrder']:
-       order = asyncio.get_event_loop().run_until_complete(exchange.fetch_order(id))
+       order = asyncio.run(exchange.fetch_order(id))
        print(order)
 
 .. code-block:: PHP
@@ -4334,7 +4386,7 @@ Market price orders are also known as *spot price orders*\ , *instant orders* or
 
 The exchange will close your market order for the best price available. You are not guaranteed though, that the order will be executed for the price you observe prior to placing your order. There can be a slight change of the price for the traded market while your order is being executed, also known as *price slippage*. The price can slip because of networking roundtrip latency, high loads on the exchange, price volatility and other factors. When placing a market order you don't need to specify the price of the order.
 
-.. code-block::
+.. code-block:: JavaScript
 
    // camelCaseNotation
    exchange.createMarketSellOrder (symbol, amount[, params])
@@ -4473,7 +4525,7 @@ Limit Orders
 
 Limit price orders are also known as *limit orders*. Some exchanges accept limit orders only. Limit orders require a price (rate per unit) to be submitted with the order. The exchange will close limit orders if and only if market price reaches the desired level.
 
-.. code-block::
+.. code-block:: JavaScript
 
    // camelCaseStyle
    exchange.createLimitBuyOrder (symbol, amount, price[, params])
@@ -4509,7 +4561,7 @@ Some exchanges allow you to specify optional parameters for your order. You can 
 User-defined ``clientOrderId``
 """"""""""""""""""""""""""""""""""
 
-.. code-block::
+.. code-block:: text
 
    - this part of the unified API is currenty a work in progress
    - there may be some issues and missing implementations here and there
@@ -4621,7 +4673,7 @@ As such, ``cancelOrder()`` can throw an ``OrderNotFound`` exception in these cas
 My Trades
 ---------
 
-.. code-block::
+.. code-block:: text
 
    - this part of the unified API is currenty a work in progress
    - there may be some issues and missing implementations here and there
@@ -4636,7 +4688,7 @@ To put it shortly, an order can contain *one or more* trades. Or, in other words
 
 For example, an orderbook can have the following orders (whatever trading symbol or pair it is):
 
-.. code-block::
+.. code-block:: text
 
        | price  | amount
    ----|----------------
@@ -4652,7 +4704,7 @@ All specific numbers above aren't real, this is just to illustrate the way order
 
 A seller decides to place a sell limit order on the ask side for a price of 0.700 and an amount of 150.
 
-.. code-block::
+.. code-block:: text
 
        | price  | amount
    ----|----------------  ↓
@@ -4681,7 +4733,7 @@ As the price and amount of the incoming sell (ask) order cover more than one bid
 
 The intermediate state of the orderbook is now (order ``b`` is ``closed`` and is not in the orderbook anymore):
 
-.. code-block::
+.. code-block:: text
 
        | price  | amount
    ----|----------------  ↓
@@ -4704,7 +4756,7 @@ The intermediate state of the orderbook is now (order ``b`` is ``closed`` and is
 
 After the above sequence takes place, the updated orderbook will look like this.
 
-.. code-block::
+.. code-block:: text
 
        | price  | amount
    ----|----------------
@@ -4844,7 +4896,8 @@ Position Structure
       'hedged': false,             // boolean, whether or not the position is hedged, i.e. if trading in the opposite direction will close this position or make a new one
       'side': 'long',              // string, long or short
       'contracts': 5,              // float, number of contracts bought, aka the amount or size of the position
-      'price': 20000,              // float, the average entry price of the position
+      'contractSize': 100,         // float, the size of one contract in quote units
+      'entryPrice': 20000,         // float, the average entry price of the position
       'markPrice': 20050,          // float, a price that is used for funding calculations
       'notional': 100000,          // float, the value of the position in the settlement currency
       'leverage': 100,             // float, the leverage of the position, related to how many contracts you can buy with a given amount of collateral
@@ -4855,7 +4908,8 @@ Position Structure
       'maintenanceMarginPercentage': 0.01,  // float, the maintenanceMargin as a percentage of the notional
       'unrealizedPnl': 300,        // float, the difference between the market price and the entry price times the number of contracts, can be negative
       'liquidationPrice': 19850,   // float, the price at which collateral becomes less than maintenanceMargin
-      'status': 'open',            // string, can be "open", "closed" or "liquidating"
+      'marginType': 'cross',       // string, can be cross or isolated
+      'percentage': 3.32,          // float, represents unrealizedPnl / initialMargin * 100
    }
 
 Positions allow you to borrow money from an exchange to go long or short on an market. Some exchanges require you to pay a funding fee to keep the position open.
@@ -4873,7 +4927,7 @@ Liquidation price
 
 It is the price at which the ``initialMargin + unrealized = collateral = maintenanceMargin``. The price has gone in the opposite direction of your position to the point where the is only maintenanceMargin collateral left and if it goes any further the position will have negative collateral.
 
-.. code-block::
+.. code-block:: JavaScript
 
    // if long
    (liquidationPrice - price) * contracts = maintenanceMargin
@@ -4971,6 +5025,7 @@ The address structures returned from ``fetchDepositAddress``\ , ``fetchDepositAd
 
    {
        'currency': currency, // currency code
+       'network': network,   // a list of deposit/withdraw networks, ERC20, TRC20, BSC20 (see below)
        'address': address,   // address in terms of requested currency
        'tag': tag,           // tag / memo / paymentId for particular currencies (XRP, XMR, ...)
        'info': response,     // raw unparsed data as returned from the exchange
@@ -4979,6 +5034,8 @@ The address structures returned from ``fetchDepositAddress``\ , ``fetchDepositAd
 With certain currencies, like AEON, BTS, GXS, NXT, SBD, STEEM, STR, XEM, XLM, XMR, XRP, an additional argument ``tag`` is usually required by exchanges. Other currencies will have the ``tag`` set to ``undefined / None / null``. The tag is a memo or a message or a payment id that is attached to a withdrawal transaction. The tag is mandatory for those currencies and it identifies the recipient user account.
 
 Be careful when specifying the ``tag`` and the ``address``. The ``tag`` is **NOT an arbitrary user-defined string** of your choice! You cannot send user messages and comments in the ``tag``. The purpose of the ``tag`` field is to address your wallet properly, so it must be correct. You should only use the ``tag`` received from the exchange you're working with, otherwise your transaction might never arrive to its destination.
+
+ **The ``network`` field is relatively new, it may be ``undefined / None / null`` or missing entirely in certain cases (with some exchanges), but will be added everywhere eventually. It is still in the process of unification.**
 
 Withdraw
 --------
@@ -5013,8 +5070,8 @@ Some exchanges require a manual approval of each withdrawal by means of 2FA (2-f
 
 In some cases you can also use the withdrawal id to check withdrawal status later (whether it succeeded or not) and to submit 2FA confirmation codes, where this is supported by the exchange. See :ref:`their docs <exchanges>` for details.
 
-Withdrawal Networks
--------------------
+Deposit And Withdrawal Networks
+-------------------------------
 
 It is also possible to pass the parameters as the fourth argument with or without a specified tag
 
@@ -5567,7 +5624,7 @@ All exceptions are derived from the base BaseError exception, which, in its turn
 
 Below is an outline of exception inheritance hierarchy:
 
-.. code-block::
+.. code-block:: text
 
    + BaseError
    |

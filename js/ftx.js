@@ -44,7 +44,7 @@ module.exports = class ftx extends Exchange {
                 'fetchDepositAddress': true,
                 'fetchDeposits': true,
                 'fetchFundingFees': undefined,
-                'fetchFundingRate': undefined,
+                'fetchFundingRate': true,
                 'fetchFundingHistory': true,
                 'fetchFundingRateHistory': true,
                 'fetchFundingRates': undefined,
@@ -290,7 +290,6 @@ module.exports = class ftx extends Exchange {
                 'exact': {
                     'Please slow down': RateLimitExceeded, // {"error":"Please slow down","success":false}
                     'Size too small for provide': InvalidOrder, // {"error":"Size too small for provide","success":false}
-                    'Not logged in': AuthenticationError, // {"error":"Not logged in","success":false}
                     'Not enough balances': InsufficientFunds, // {"error":"Not enough balances","success":false}
                     'InvalidPrice': InvalidOrder, // {"error":"Invalid price","success":false}
                     'Size too small': InvalidOrder, // {"error":"Size too small","success":false}
@@ -306,8 +305,12 @@ module.exports = class ftx extends Exchange {
                     'Invalid reduce-only order': InvalidOrder, // {"error":"Invalid reduce-only order","success":false}
                     'Account does not have enough balances': InsufficientFunds, // {"success":false,"error":"Account does not have enough balances"}
                     'Not authorized for subaccount-specific access': PermissionDenied, // {"success":false,"error":"Not authorized for subaccount-specific access"}
+                    'Not approved to trade this product': PermissionDenied, // {"success":false,"error":"Not approved to trade this product"}
                 },
                 'broad': {
+                    // {"error":"Not logged in","success":false}
+                    // {"error":"Not logged in: Invalid API key","success":false}
+                    'Not logged in': AuthenticationError,
                     'Account does not have enough margin for order': InsufficientFunds,
                     'Invalid parameter': BadRequest, // {"error":"Invalid parameter start_time","success":false}
                     'The requested URL was not found on the server': BadRequest,
@@ -440,6 +443,30 @@ module.exports = class ftx extends Exchange {
         //         ],
         //     }
         //
+        //     {
+        //         name: "BTC-PERP",
+        //         enabled:  true,
+        //         postOnly:  false,
+        //         priceIncrement: "1.0",
+        //         sizeIncrement: "0.0001",
+        //         minProvideSize: "0.001",
+        //         last: "60397.0",
+        //         bid: "60387.0",
+        //         ask: "60388.0",
+        //         price: "60388.0",
+        //         type: "future",
+        //         baseCurrency:  null,
+        //         quoteCurrency:  null,
+        //         underlying: "BTC",
+        //         restricted:  false,
+        //         highLeverageFeeExempt:  true,
+        //         change1h: "-0.0036463231533270636",
+        //         change24h: "-0.01844838515677064",
+        //         changeBod: "-0.010130151132675475",
+        //         quoteVolume24h: "2892083192.6099",
+        //         volumeUsd24h: "2892083192.6099"
+        //     }
+        //
         const result = [];
         const markets = this.safeValue (response, 'result', []);
         for (let i = 0; i < markets.length; i++) {
@@ -483,6 +510,9 @@ module.exports = class ftx extends Exchange {
                     'cost': {
                         'min': undefined,
                         'max': undefined,
+                    },
+                    'leverage': {
+                        'max': 20,
                     },
                 },
                 'info': market,
@@ -1000,24 +1030,34 @@ module.exports = class ftx extends Exchange {
         };
     }
 
-    async fetchFundingRateHistory (symbol, limit = undefined, since = undefined, params = {}) {
+    async fetchFundingRateHistory (symbol = undefined, since = undefined, limit = undefined, params = {}) {
         //
         // Gets a history of funding rates with their timestamps
         //  (param) symbol: Future currency pair (e.g. "BTC-PERP")
         //  (param) limit: Not used by ftx
         //  (param) since: Unix timestamp in miliseconds for the time of the earliest requested funding rate
+        //  (param) params: Object containing more params for the request
+        //             - until: Unix timestamp in miliseconds for the time of the earliest requested funding rate
         //  return: [{symbol, fundingRate, timestamp}]
         //
         await this.loadMarkets ();
-        const market = this.market (symbol);
-        const request = {
-            'future': market['id'],
-        };
-        if (since !== undefined) {
-            request['start_time'] = since / 1000;
+        const request = {};
+        if (symbol !== undefined) {
+            const market = this.market (symbol);
+            request['future'] = market['id'];
         }
-        const method = 'publicGetFundingRates';
-        const response = await this[method] (this.extend (request, params));
+        if (since !== undefined) {
+            request['start_time'] = parseInt (since / 1000);
+        }
+        const till = this.safeInteger (params, 'till'); // unified in milliseconds
+        const endTime = this.safeString (params, 'end_time'); // exchange-specific in seconds
+        params = this.omit (params, [ 'end_time', 'till' ]);
+        if (till !== undefined) {
+            request['end_time'] = parseInt (till / 1000);
+        } else if (endTime !== undefined) {
+            request['end_time'] = endTime;
+        }
+        const response = await this.publicGetFundingRates (this.extend (request, params));
         //
         //     {
         //        "success": true,
@@ -1033,13 +1073,20 @@ module.exports = class ftx extends Exchange {
         const result = this.safeValue (response, 'result');
         const rates = [];
         for (let i = 0; i < result.length; i++) {
+            const entry = result[i];
+            const marketId = this.safeString (entry, 'future');
+            const symbol = this.safeSymbol (marketId);
+            const timestamp = this.parse8601 (this.safeString (result[i], 'time'));
             rates.push ({
-                'symbol': this.safeString (result[i], 'future'),
-                'fundingRate': this.safeNumber (result[i], 'rate'),
-                'timestamp': this.parse8601 (this.safeString (result[i], 'time')),
+                'info': entry,
+                'symbol': symbol,
+                'fundingRate': this.safeNumber (entry, 'rate'),
+                'timestamp': timestamp,
+                'datetime': this.iso8601 (timestamp),
             });
         }
-        return this.sortBy (rates, 'timestamp');
+        const sorted = this.sortBy (rates, 'timestamp');
+        return this.filterBySymbolSinceLimit (sorted, symbol, since, limit);
     }
 
     async fetchBalance (params = {}) {
@@ -1192,12 +1239,12 @@ module.exports = class ftx extends Exchange {
         const id = this.safeString (order, 'id');
         const timestamp = this.parse8601 (this.safeString (order, 'createdAt'));
         let status = this.parseOrderStatus (this.safeString (order, 'status'));
-        const amount = this.safeNumber (order, 'size');
-        const filled = this.safeNumber (order, 'filledSize');
-        let remaining = this.safeNumber (order, 'remainingSize');
-        if ((remaining === 0.0) && (amount !== undefined) && (filled !== undefined)) {
-            remaining = Math.max (amount - filled, 0);
-            if (remaining > 0) {
+        const amount = this.safeString (order, 'size');
+        const filled = this.safeString (order, 'filledSize');
+        let remaining = this.safeString (order, 'remainingSize');
+        if (Precise.stringEquals (remaining, '0')) {
+            remaining = Precise.stringSub (amount, filled);
+            if (Precise.stringGt (remaining, '0')) {
                 status = 'canceled';
             }
         }
@@ -1218,17 +1265,13 @@ module.exports = class ftx extends Exchange {
         }
         const side = this.safeString (order, 'side');
         const type = this.safeString (order, 'type');
-        const average = this.safeNumber (order, 'avgFillPrice');
-        const price = this.safeNumber2 (order, 'price', 'triggerPrice', average);
-        let cost = undefined;
-        if (filled !== undefined && price !== undefined) {
-            cost = filled * price;
-        }
+        const average = this.safeString (order, 'avgFillPrice');
+        const price = this.safeString2 (order, 'price', 'triggerPrice', average);
         const lastTradeTimestamp = this.parse8601 (this.safeString (order, 'triggeredAt'));
         const clientOrderId = this.safeString (order, 'clientId');
         const stopPrice = this.safeNumber (order, 'triggerPrice');
         const postOnly = this.safeValue (order, 'postOnly');
-        return {
+        return this.safeOrder2 ({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -1243,14 +1286,14 @@ module.exports = class ftx extends Exchange {
             'price': price,
             'stopPrice': stopPrice,
             'amount': amount,
-            'cost': cost,
+            'cost': undefined,
             'average': average,
             'filled': filled,
             'remaining': remaining,
             'status': status,
             'fee': undefined,
             'trades': undefined,
-        };
+        }, market);
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
@@ -1883,6 +1926,7 @@ module.exports = class ftx extends Exchange {
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': undefined,
             'info': response,
         };
     }
@@ -1892,6 +1936,7 @@ module.exports = class ftx extends Exchange {
             // what are other statuses here?
             'confirmed': 'ok', // deposits
             'complete': 'ok', // withdrawals
+            'cancelled': 'canceled', // deposits
         };
         return this.safeString (statuses, status, status);
     }
@@ -2151,12 +2196,12 @@ module.exports = class ftx extends Exchange {
             const parsed = this.parseIncome (entry, market);
             result.push (parsed);
         }
-        return this.filterBySinceLimit (result, since, limit, 'timestamp');
+        const sorted = this.sortBy (result, 'timestamp');
+        return this.filterBySinceLimit (sorted, since, limit, 'timestamp');
     }
 
     async fetchFundingHistory (symbol = undefined, since = undefined, limit = undefined, params = {}) {
         await this.loadMarkets ();
-        const method = 'private_get_funding_payments';
         const request = {};
         let market = undefined;
         if (symbol !== undefined) {
@@ -2166,8 +2211,73 @@ module.exports = class ftx extends Exchange {
         if (since !== undefined) {
             request['startTime'] = since;
         }
-        const response = await this[method] (this.extend (request, params));
+        const response = await this.privateGetFundingPayments (this.extend (request, params));
         const result = this.safeValue (response, 'result', []);
         return this.parseIncomes (result, market, since, limit);
+    }
+
+    parseFundingRate (fundingRate, market = undefined) {
+        //
+        // perp
+        //     {
+        //       "volume": "71294.7636",
+        //       "nextFundingRate": "0.000033",
+        //       "nextFundingTime": "2021-10-14T20:00:00+00:00",
+        //       "openInterest": "47142.994"
+        //     }
+        //
+        // delivery
+        //     {
+        //       "volume": "4998.727",
+        //       "predictedExpirationPrice": "3798.820141757",
+        //       "openInterest": "48307.96"
+        //     }
+        //
+        const nextFundingRate = this.safeNumber (fundingRate, 'nextFundingRate');
+        const nextFundingRateDatetimeRaw = this.safeString (fundingRate, 'nextFundingTime');
+        const nextFundingRateTimestamp = this.parse8601 (nextFundingRateDatetimeRaw);
+        let previousFundingTimestamp = undefined;
+        if (nextFundingRateTimestamp !== undefined) {
+            previousFundingTimestamp = nextFundingRateTimestamp - 3600000;
+        }
+        const estimatedSettlePrice = this.safeNumber (fundingRate, 'predictedExpirationPrice');
+        return {
+            'info': fundingRate,
+            'symbol': market['symbol'],
+            'markPrice': undefined,
+            'indexPrice': undefined,
+            'interestRate': this.parseNumber ('0'),
+            'estimatedSettlePrice': estimatedSettlePrice,
+            'timestamp': undefined,
+            'datetime': undefined,
+            'previousFundingRate': undefined,
+            'nextFundingRate': nextFundingRate,
+            'previousFundingTimestamp': previousFundingTimestamp, // subtract 8 hours
+            'nextFundingTimestamp': nextFundingRateTimestamp,
+            'previousFundingDatetime': this.iso8601 (previousFundingTimestamp),
+            'nextFundingDatetime': this.iso8601 (nextFundingRateTimestamp),
+        };
+    }
+
+    async fetchFundingRate (symbol, params = {}) {
+        await this.loadMarkets ();
+        const market = this.market (symbol);
+        const request = {
+            'future_name': market['id'],
+        };
+        const response = await this.publicGetFuturesFutureNameStats (this.extend (request, params));
+        //
+        //     {
+        //       "success": true,
+        //       "result": {
+        //         "volume": "71294.7636",
+        //         "nextFundingRate": "0.000033",
+        //         "nextFundingTime": "2021-10-14T20:00:00+00:00",
+        //         "openInterest": "47142.994"
+        //       }
+        //     }
+        //
+        const result = this.safeValue (response, 'result', {});
+        return this.parseFundingRate (result, market);
     }
 };

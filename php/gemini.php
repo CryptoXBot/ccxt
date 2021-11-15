@@ -7,6 +7,7 @@ namespace ccxt;
 
 use Exception; // a common import
 use \ccxt\ExchangeError;
+use \ccxt\AuthenticationError;
 use \ccxt\ArgumentsRequired;
 use \ccxt\NotSupported;
 
@@ -28,7 +29,7 @@ class gemini extends Exchange {
                 'fetchBalance' => true,
                 'fetchBidsAsks' => null,
                 'fetchClosedOrders' => null,
-                'fetchDepositAddress' => null,
+                'fetchDepositAddress' => null, // TODO
                 'fetchDeposits' => null,
                 'fetchMarkets' => true,
                 'fetchMyTrades' => true,
@@ -80,21 +81,23 @@ class gemini extends Exchange {
                 'public' => array(
                     'get' => array(
                         'v1/symbols',
-                        'v1/pricefeed',
+                        'v1/symbols/details/{symbol}',
                         'v1/pubticker/{symbol}',
-                        'v1/book/{symbol}',
+                        'v2/ticker/{symbol}',
+                        'v2/candles/{symbol}/{timeframe}',
                         'v1/trades/{symbol}',
                         'v1/auction/{symbol}',
                         'v1/auction/{symbol}/history',
-                        'v2/candles/{symbol}/{timeframe}',
-                        'v2/ticker/{symbol}',
+                        'v1/pricefeed',
+                        'v1/book/{symbol}',
+                        'v1/earn/rates',
                     ),
                 ),
                 'private' => array(
                     'post' => array(
-                        'v1/account/list',
                         'v1/order/new',
                         'v1/order/cancel',
+                        'v1/wrap/{symbol}',
                         'v1/order/cancel/session',
                         'v1/order/cancel/all',
                         'v1/order/status',
@@ -102,12 +105,30 @@ class gemini extends Exchange {
                         'v1/mytrades',
                         'v1/notionalvolume',
                         'v1/tradevolume',
-                        'v1/transfers',
+                        'v1/clearing/new',
+                        'v1/clearing/status',
+                        'v1/clearing/cancel',
+                        'v1/clearing/confirm',
                         'v1/balances',
+                        'v1/notionalbalances/{currency}',
+                        'v1/transfers',
+                        'v1/addresses/{network}',
+                        'v1/deposit/{network}/newAddress',
                         'v1/deposit/{currency}/newAddress',
                         'v1/withdraw/{currency}',
+                        'v1/account/transfer/{currency}',
+                        'v1/payments/addbank',
+                        'v1/payments/methods',
+                        'v1/payments/sen/withdraw',
+                        'v1/balances/earn',
+                        'v1/earn/interest',
+                        'v1/approvedAddresses/{network}/request',
+                        'v1/approvedAddresses/account/{network}',
+                        'v1/approvedAddresses/{network}/remove',
+                        'v1/account',
+                        'v1/account/create',
+                        'v1/account/list',
                         'v1/heartbeat',
-                        'v1/transfers',
                     ),
                 ),
             ),
@@ -178,6 +199,26 @@ class gemini extends Exchange {
             'options' => array(
                 'fetchMarketsMethod' => 'fetch_markets_from_web',
                 'fetchTickerMethod' => 'fetchTickerV1', // fetchTickerV1, fetchTickerV2, fetchTickerV1AndV2
+                'networkIds' => array(
+                    'bitcoin' => 'BTC',
+                    'ethereum' => 'ERC20',
+                    'bitcoincash' => 'BCH',
+                    'litecoin' => 'LTC',
+                    'zcash' => 'ZEC',
+                    'filecoin' => 'FIL',
+                    'dogecoin' => 'DOGE',
+                    'tezos' => 'XTZ',
+                ),
+                'networks' => array(
+                    'BTC' => 'bitcoin',
+                    'ERC20' => 'ethereum',
+                    'BCH' => 'bitcoincash',
+                    'LTC' => 'litecoin',
+                    'ZEC' => 'zcash',
+                    'FIL' => 'filecoin',
+                    'DOGE' => 'dogecoin',
+                    'XTZ' => 'tezos',
+                ),
             ),
         ));
     }
@@ -230,7 +271,8 @@ class gemini extends Exchange {
             $amountPrecisionParts = explode(' ', $amountPrecisionString);
             $amountPrecision = $this->safe_number($amountPrecisionParts, 0);
             $idLength = strlen($marketId) - 0;
-            $quoteId = mb_substr($marketId, $idLength - 3, $idLength - $idLength - 3);
+            $startingIndex = $idLength - 3;
+            $quoteId = mb_substr($marketId, $startingIndex, $idLength - $startingIndex);
             $quote = $this->safe_currency_code($quoteId);
             $pricePrecisionString = str_replace('<td>', '', $cells[3]);
             $pricePrecisionParts = explode(' ', $pricePrecisionString);
@@ -247,6 +289,8 @@ class gemini extends Exchange {
                 'quote' => $quote,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
+                'type' => 'spot',
+                'spot' => true,
                 'active' => $active,
                 'precision' => array(
                     'amount' => $amountPrecision,
@@ -602,9 +646,9 @@ class gemini extends Exchange {
 
     public function parse_order($order, $market = null) {
         $timestamp = $this->safe_integer($order, 'timestampms');
-        $amount = $this->safe_number($order, 'original_amount');
-        $remaining = $this->safe_number($order, 'remaining_amount');
-        $filled = $this->safe_number($order, 'executed_amount');
+        $amount = $this->safe_string($order, 'original_amount');
+        $remaining = $this->safe_string($order, 'remaining_amount');
+        $filled = $this->safe_string($order, 'executed_amount');
         $status = 'closed';
         if ($order['is_live']) {
             $status = 'open';
@@ -612,8 +656,8 @@ class gemini extends Exchange {
         if ($order['is_cancelled']) {
             $status = 'canceled';
         }
-        $price = $this->safe_number($order, 'price');
-        $average = $this->safe_number($order, 'avg_execution_price');
+        $price = $this->safe_string($order, 'price');
+        $average = $this->safe_string($order, 'avg_execution_price');
         $type = $this->safe_string($order, 'type');
         if ($type === 'exchange limit') {
             $type = 'limit';
@@ -628,7 +672,7 @@ class gemini extends Exchange {
         $id = $this->safe_string($order, 'order_id');
         $side = $this->safe_string_lower($order, 'side');
         $clientOrderId = $this->safe_string($order, 'client_order_id');
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'id' => $id,
             'clientOrderId' => $clientOrderId,
             'info' => $order,
@@ -650,7 +694,7 @@ class gemini extends Exchange {
             'remaining' => $remaining,
             'fee' => $fee,
             'trades' => null,
-        ));
+        ), $market);
     }
 
     public function fetch_order($id, $symbol = null, $params = array ()) {
@@ -790,11 +834,52 @@ class gemini extends Exchange {
         );
     }
 
+    public function parse_deposit_address($depositAddress, $currency = null) {
+        //
+        //      {
+        //          $address => "0xed6494Fe7c1E56d1bd6136e89268C51E32d9708B",
+        //          timestamp => "1636813923098",
+        //          addressVersion => "eV1"                                         }
+        //      }
+        //
+        $address = $this->safe_string($depositAddress, 'address');
+        return array(
+            'currency' => $currency,
+            'network' => null,
+            'address' => $address,
+            'tag' => null,
+            'info' => $depositAddress,
+        );
+    }
+
+    public function fetch_deposit_addresses_by_network($code, $params = array ()) {
+        $this->load_markets();
+        $network = $this->safe_string($params, 'network');
+        if ($network === null) {
+            throw new ArgumentsRequired($this->id . 'fetchDepositAddressesByNetwork() requires a $network parameter');
+        }
+        $params = $this->omit($params, 'network');
+        $networks = $this->safe_value($this->options, 'networks', array());
+        $networkId = $this->safe_string($networks, $network, $network);
+        $networkIds = $this->safe_value($this->options, 'networkIds', array());
+        $networkCode = $this->safe_string($networkIds, $networkId, $network);
+        $request = array(
+            'network' => $networkId,
+        );
+        $response = $this->privatePostV1AddressesNetwork (array_merge($request, $params));
+        $results = $this->parse_deposit_addresses($response, [$code], false, array( 'network' => $networkCode, 'currency' => $code ));
+        return $this->group_by($results, 'network');
+    }
+
     public function sign($path, $api = 'public', $method = 'GET', $params = array (), $headers = null, $body = null) {
         $url = '/' . $this->implode_params($path, $params);
         $query = $this->omit($params, $this->extract_params($path));
         if ($api === 'private') {
             $this->check_required_credentials();
+            $apiKey = $this->apiKey;
+            if (mb_strpos($apiKey, 'account') === false) {
+                throw new AuthenticationError($this->id . ' sign() requires an account-key, master-keys are not-supported');
+            }
             $nonce = $this->nonce();
             $request = array_merge(array(
                 'request' => $url,

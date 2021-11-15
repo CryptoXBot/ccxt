@@ -281,6 +281,8 @@ module.exports = class bitbay extends Exchange {
                 'baseId': baseId,
                 'quoteId': quoteId,
                 'precision': precision,
+                'type': 'spot',
+                'spot': true,
                 'active': undefined,
                 'maker': maker,
                 'taker': taker,
@@ -334,10 +336,10 @@ module.exports = class bitbay extends Exchange {
         const marketId = this.safeString (order, 'market');
         const symbol = this.safeSymbol (marketId, market, '-');
         const timestamp = this.safeInteger (order, 'time');
-        const amount = this.safeNumber (order, 'startAmount');
-        const remaining = this.safeNumber (order, 'currentAmount');
+        const amount = this.safeString (order, 'startAmount');
+        const remaining = this.safeString (order, 'currentAmount');
         const postOnly = this.safeValue (order, 'postOnly');
-        return this.safeOrder ({
+        return this.safeOrder2 ({
             'id': this.safeString (order, 'id'),
             'clientOrderId': undefined,
             'info': order,
@@ -350,7 +352,7 @@ module.exports = class bitbay extends Exchange {
             'timeInForce': undefined,
             'postOnly': postOnly,
             'side': this.safeStringLower (order, 'offerType'),
-            'price': this.safeNumber (order, 'rate'),
+            'price': this.safeString (order, 'rate'),
             'stopPrice': undefined,
             'amount': amount,
             'cost': undefined,
@@ -359,7 +361,7 @@ module.exports = class bitbay extends Exchange {
             'average': undefined,
             'fee': undefined,
             'trades': undefined,
-        });
+        }, market);
     }
 
     async fetchMyTrades (symbol = undefined, since = undefined, limit = undefined, params = {}) {

@@ -25,6 +25,7 @@ from ccxt.base.errors import NotSupported
 from ccxt.base.errors import ExchangeNotAvailable
 from ccxt.base.errors import OnMaintenance
 from ccxt.base.errors import InvalidNonce
+from ccxt.base.precise import Precise
 
 
 class bitstamp(Exchange):
@@ -200,6 +201,16 @@ class bitstamp(Exchange):
                         'sand_address/',
                         'hbar_withdrawal/',
                         'hbar_address/',
+                        'rgt_withdrawal/',
+                        'rgt_address/',
+                        'fet_withdrawal/',
+                        'fet_address/',
+                        'skl_withdrawal/',
+                        'skl_address/',
+                        'cel_withdrawal/',
+                        'cel_address/',
+                        'sxp_withdrawal/',
+                        'sxp_address/',
                         'transfer-to-main/',
                         'transfer-from-main/',
                         'withdrawal-requests/',
@@ -209,6 +220,7 @@ class bitstamp(Exchange):
                         'liquidation_address/new/',
                         'liquidation_address/info/',
                         'btc_unconfirmed/',
+                        'websockets_token/',
                     ],
                 },
             },
@@ -338,6 +350,8 @@ class bitstamp(Exchange):
                 'quoteId': quoteId,
                 'symbolId': symbolId,
                 'info': market,
+                'type': 'spot',
+                'spot': True,
                 'active': active,
                 'precision': precision,
                 'limits': {
@@ -671,7 +685,9 @@ class bitstamp(Exchange):
 
     def parse_trading_fee(self, balances, symbol):
         market = self.market(symbol)
-        tradeFee = self.safe_number(balances, market['id'] + '_fee')
+        feeString = self.safe_string(balances, market['id'] + '_fee')
+        dividedFeeString = Precise.string_div(feeString, '100')
+        tradeFee = self.parse_number(dividedFeeString)
         return {
             'symbol': symbol,
             'maker': tradeFee,
@@ -1406,6 +1422,7 @@ class bitstamp(Exchange):
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': None,
             'info': response,
         }
 

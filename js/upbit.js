@@ -326,6 +326,8 @@ module.exports = class upbit extends Exchange {
             'quote': quote,
             'baseId': baseId,
             'quoteId': quoteId,
+            'type': 'spot',
+            'spot': true,
             'active': active,
             'precision': precision,
             'maker': fee,
@@ -1370,6 +1372,7 @@ module.exports = class upbit extends Exchange {
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': undefined,
             'info': depositAddress,
         };
     }

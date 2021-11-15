@@ -126,6 +126,8 @@ module.exports = class independentreserve extends Exchange {
                     'baseId': baseId,
                     'quoteId': quoteId,
                     'info': id,
+                    'type': 'spot',
+                    'spot': true,
                     'active': undefined,
                     'precision': this.precision,
                     'limits': {
@@ -269,9 +271,9 @@ module.exports = class independentreserve extends Exchange {
             orderType = 'limit';
         }
         const timestamp = this.parse8601 (this.safeString (order, 'CreatedTimestampUtc'));
-        const amount = this.safeNumber2 (order, 'VolumeOrdered', 'Volume');
-        const filled = this.safeNumber (order, 'VolumeFilled');
-        const remaining = this.safeNumber (order, 'Outstanding');
+        const amount = this.safeString2 (order, 'VolumeOrdered', 'Volume');
+        const filled = this.safeString (order, 'VolumeFilled');
+        const remaining = this.safeString (order, 'Outstanding');
         const feeRate = this.safeNumber (order, 'FeePercent');
         let feeCost = undefined;
         if (feeRate !== undefined && filled !== undefined) {
@@ -284,10 +286,10 @@ module.exports = class independentreserve extends Exchange {
         };
         const id = this.safeString (order, 'OrderGuid');
         const status = this.parseOrderStatus (this.safeString (order, 'Status'));
-        const cost = this.safeNumber (order, 'Value');
-        const average = this.safeNumber (order, 'AvgPrice');
-        const price = this.safeNumber (order, 'Price');
-        return this.safeOrder ({
+        const cost = this.safeString (order, 'Value');
+        const average = this.safeString (order, 'AvgPrice');
+        const price = this.safeString (order, 'Price');
+        return this.safeOrder2 ({
             'info': order,
             'id': id,
             'clientOrderId': undefined,
@@ -309,7 +311,7 @@ module.exports = class independentreserve extends Exchange {
             'status': status,
             'fee': fee,
             'trades': undefined,
-        });
+        }, market);
     }
 
     parseOrderStatus (status) {

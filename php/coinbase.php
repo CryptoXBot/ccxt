@@ -553,6 +553,8 @@ class coinbase extends Exchange {
                         'quote' => $quote,
                         'baseId' => $baseId,
                         'quoteId' => $quoteId,
+                        'type' => 'spot',
+                        'spot' => true,
                         'active' => null,
                         'info' => $quoteCurrency,
                         'precision' => array(
@@ -571,6 +573,9 @@ class coinbase extends Exchange {
                             'cost' => array(
                                 'min' => $this->safe_number($quoteCurrency, 'min_size'),
                                 'max' => null,
+                            ),
+                            'leverage' => array(
+                                'max' => 1,
                             ),
                         ),
                     );

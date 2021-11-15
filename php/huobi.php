@@ -9,6 +9,7 @@ use Exception; // a common import
 use \ccxt\ExchangeError;
 use \ccxt\ArgumentsRequired;
 use \ccxt\BadSymbol;
+use \ccxt\InvalidAddress;
 use \ccxt\InvalidOrder;
 use \ccxt\NetworkError;
 
@@ -37,6 +38,7 @@ class huobi extends Exchange {
                 'fetchClosedOrders' => true,
                 'fetchCurrencies' => true,
                 'fetchDepositAddress' => true,
+                'fetchDepositAddressesByNetwork' => true,
                 'fetchDeposits' => true,
                 'fetchMarkets' => true,
                 'fetchMyTrades' => true,
@@ -82,10 +84,10 @@ class huobi extends Exchange {
                     'v2Private' => 'https://{hostname}',
                 ),
                 'www' => 'https://www.huobi.com',
-                'referral' => array(
-                    'url' => 'https://www.huobi.com/en-us/topic/double-reward/?invite_code=6rmm2223',
-                    'discount' => 0.15,
-                ),
+                // 'referral' => array(
+                //     'url' => 'https://www.huobi.com/en-us/topic/double-reward/?invite_code=6rmm2223',
+                //     'discount' => 0.15,
+                // ),
                 'doc' => array(
                     'https://huobiapi.github.io/docs/spot/v1/cn/',
                     'https://huobiapi.github.io/docs/dm/v1/cn/',
@@ -284,6 +286,7 @@ class huobi extends Exchange {
                 ),
             ),
             'options' => array(
+                'defaultNetwork' => 'ERC20',
                 'networks' => array(
                     'ETH' => 'erc20',
                     'TRX' => 'trc20',
@@ -436,6 +439,8 @@ class huobi extends Exchange {
                 'quote' => $quote,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
+                'type' => 'spot',
+                'spot' => true,
                 'active' => $active,
                 'precision' => $precision,
                 'taker' => $taker,
@@ -452,6 +457,10 @@ class huobi extends Exchange {
                     'cost' => array(
                         'min' => $minCost,
                         'max' => null,
+                    ),
+                    'leverage' => array(
+                        'max' => $this->safe_number($market, 'leverage-ratio', 1),
+                        'superMax' => $this->safe_number($market, 'super-margin-leverage-ratio', 1),
                     ),
                 ),
                 'info' => $market,
@@ -858,66 +867,112 @@ class huobi extends Exchange {
     }
 
     public function fetch_currencies($params = array ()) {
-        $request = array(
-            'language' => $this->options['language'],
-        );
-        $response = $this->publicGetSettingsCurrencys (array_merge($request, $params));
-        $currencies = $this->safe_value($response, 'data');
+        $response = $this->v2PublicGetReferenceCurrencies ();
+        //     {
+        //       "$code" => 200,
+        //       "$data" => array(
+        //         {
+        //           "currency" => "sxp",
+        //           "assetType" => "1",
+        //           "$chains" => array(
+        //             {
+        //               "$chain" => "sxp",
+        //               "displayName" => "ERC20",
+        //               "baseChain" => "ETH",
+        //               "$baseChainProtocol" => "ERC20",
+        //               "isDynamic" => true,
+        //               "numOfConfirmations" => "12",
+        //               "numOfFastConfirmations" => "12",
+        //               "depositStatus" => "allowed",
+        //               "minDepositAmt" => "0.23",
+        //               "withdrawStatus" => "allowed",
+        //               "minWithdrawAmt" => "0.23",
+        //               "withdrawPrecision" => "8",
+        //               "maxWithdrawAmt" => "227000.000000000000000000",
+        //               "withdrawQuotaPerDay" => "227000.000000000000000000",
+        //               "withdrawQuotaPerYear" => null,
+        //               "withdrawQuotaTotal" => null,
+        //               "withdrawFeeType" => "fixed",
+        //               "transactFeeWithdraw" => "11.1653",
+        //               "addrWithTag" => false,
+        //               "addrDepositTag" => false
+        //             }
+        //           ),
+        //           "$instStatus" => "normal"
+        //         }
+        //       )
+        //     }
+        //
+        $data = $this->safe_value($response, 'data', array());
         $result = array();
-        for ($i = 0; $i < count($currencies); $i++) {
-            $currency = $currencies[$i];
-            //
-            //  {                     $name => "ctxc",
-            //              'display-name' => "CTXC",
-            //        'withdraw-precision' =>  8,
-            //             'currency-type' => "eth",
-            //        'currency-partition' => "pro",
-            //             'support-sites' =>  null,
-            //                'otc-enable' =>  0,
-            //        'deposit-min-amount' => "2",
-            //       'withdraw-min-amount' => "4",
-            //            'show-precision' => "8",
-            //                      weight => "2988",
-            //                     visible =>  true,
-            //              'deposit-desc' => "Please don’t deposit any other digital assets except CTXC t…",
-            //             'withdraw-desc' => "Minimum withdrawal amount => 4 CTXC. !>_<!For security reason…",
-            //           'deposit-enabled' =>  true,
-            //          'withdraw-enabled' =>  true,
-            //    'currency-addr-with-tag' =>  false,
-            //             'fast-confirms' =>  15,
-            //             'safe-confirms' =>  30                                                             }
-            //
-            $id = $this->safe_value($currency, 'name');
-            $precision = $this->safe_integer($currency, 'withdraw-precision');
-            $code = $this->safe_currency_code($id);
-            $active = $currency['visible'] && $currency['deposit-enabled'] && $currency['withdraw-enabled'];
-            $name = $this->safe_string($currency, 'display-name');
+        for ($i = 0; $i < count($data); $i++) {
+            $entry = $data[$i];
+            $currencyId = $this->safe_string($entry, 'currency');
+            $code = $this->safe_currency_code($currencyId);
+            $chains = $this->safe_value($entry, 'chains', array());
+            $networks = array();
+            $instStatus = $this->safe_string($entry, 'instStatus');
+            $currencyActive = $instStatus === 'normal';
+            $fee = null;
+            $precision = null;
+            $minWithdraw = null;
+            $maxWithdraw = null;
+            for ($j = 0; $j < count($chains); $j++) {
+                $chain = $chains[$j];
+                $networkId = $this->safe_string($chain, 'chain');
+                $baseChainProtocol = $this->safe_string($chain, 'baseChainProtocol');
+                $huobiToken = 'h' . $currencyId;
+                if ($baseChainProtocol === null) {
+                    if ($huobiToken === $networkId) {
+                        $baseChainProtocol = 'ERC20';
+                    } else {
+                        $baseChainProtocol = $this->safe_string($chain, 'displayName');
+                    }
+                }
+                $network = $this->safe_network($baseChainProtocol);
+                $minWithdraw = $this->safe_number($chain, 'minWithdrawAmt');
+                $maxWithdraw = $this->safe_number($chain, 'maxWithdrawAmt');
+                $withdraw = $this->safe_string($chain, 'withdrawStatus');
+                $deposit = $this->safe_string($chain, 'depositStatus');
+                $active = ($withdraw === 'allowed') && ($deposit === 'allowed');
+                $precision = $this->safe_integer($chain, 'withdrawPrecision');
+                $fee = $this->safe_number($chain, 'transactFeeWithdraw');
+                $networks[$network] = array(
+                    'info' => $chain,
+                    'id' => $networkId,
+                    'network' => $network,
+                    'limits' => array(
+                        'withdraw' => array(
+                            'min' => $minWithdraw,
+                            'max' => $maxWithdraw,
+                        ),
+                    ),
+                    'active' => $active,
+                    'fee' => $fee,
+                    'precision' => $precision,
+                );
+            }
+            $networksKeys = is_array($networks) ? array_keys($networks) : array();
+            $networkLength = is_array($networksKeys) ? count($networksKeys) : 0;
             $result[$code] = array(
-                'id' => $id,
+                'info' => $entry,
                 'code' => $code,
-                'type' => 'crypto',
-                // 'payin' => $currency['deposit-enabled'],
-                // 'payout' => $currency['withdraw-enabled'],
-                // 'transfer' => null,
-                'name' => $name,
-                'active' => $active,
-                'fee' => null, // todo need to fetch from fee endpoint
-                'precision' => $precision,
+                'id' => $currencyId,
+                'active' => $currencyActive,
+                'fee' => ($networkLength <= 1) ? $fee : null,
+                'name' => null,
                 'limits' => array(
                     'amount' => array(
-                        'min' => pow(10, -$precision),
-                        'max' => pow(10, $precision),
-                    ),
-                    'deposit' => array(
-                        'min' => $this->safe_number($currency, 'deposit-min-amount'),
-                        'max' => pow(10, $precision),
+                        'min' => null,
+                        'max' => null,
                     ),
                     'withdraw' => array(
-                        'min' => $this->safe_number($currency, 'withdraw-min-amount'),
-                        'max' => pow(10, $precision),
+                        'min' => ($networkLength <= 1) ? $minWithdraw : null,
+                        'max' => ($networkLength <= 1) ? $maxWithdraw : null,
                     ),
                 ),
-                'info' => $currency,
+                'precision' => ($networkLength <= 1) ? $precision : null,
+                'networks' => $networks,
             );
         }
         return $result;
@@ -1127,13 +1182,10 @@ class huobi extends Exchange {
         $symbol = $this->safe_symbol($marketId, $market);
         $timestamp = $this->safe_integer($order, 'created-at');
         $clientOrderId = $this->safe_string($order, 'client-$order-id');
-        $amount = $this->safe_number($order, 'amount');
-        $filled = $this->safe_number_2($order, 'filled-amount', 'field-amount'); // typo in their API, $filled $amount
-        $price = $this->safe_number($order, 'price');
-        if ($price === 0.0) {
-            $price = null;
-        }
-        $cost = $this->safe_number_2($order, 'filled-cash-amount', 'field-cash-amount'); // same typo
+        $amount = $this->safe_string($order, 'amount');
+        $filled = $this->safe_string_2($order, 'filled-amount', 'field-amount'); // typo in their API, $filled $amount
+        $price = $this->safe_string($order, 'price');
+        $cost = $this->safe_string_2($order, 'filled-cash-amount', 'field-cash-amount'); // same typo
         $feeCost = $this->safe_number_2($order, 'filled-fees', 'field-fees'); // typo in their API, $filled fees
         $fee = null;
         if ($feeCost !== null) {
@@ -1146,7 +1198,7 @@ class huobi extends Exchange {
                 'currency' => $feeCurrency,
             );
         }
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => $clientOrderId,
@@ -1168,7 +1220,7 @@ class huobi extends Exchange {
             'status' => $status,
             'fee' => $fee,
             'trades' => null,
-        ));
+        ), $market);
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
@@ -1208,7 +1260,7 @@ class huobi extends Exchange {
         } else {
             $request['amount'] = $this->amount_to_precision($symbol, $amount);
         }
-        if ($type === 'limit' || $type === 'ioc' || $type === 'limit-maker') {
+        if ($type === 'limit' || $type === 'ioc' || $type === 'limit-maker' || $type === 'stop-limit' || $type === 'stop-limit-fok') {
             $request['price'] = $this->price_to_precision($symbol, $price);
         }
         $method = $this->options['createOrderMethod'];
@@ -1240,10 +1292,10 @@ class huobi extends Exchange {
     public function cancel_order($id, $symbol = null, $params = array ()) {
         $response = $this->privatePostOrderOrdersIdSubmitcancel (array( 'id' => $id ));
         //
-        //     $response = array(
+        //     {
         //         'status' => 'ok',
         //         'data' => '10138899000',
-        //     );
+        //     }
         //
         return array_merge($this->parse_order($response), array(
             'id' => $id,
@@ -1329,29 +1381,49 @@ class huobi extends Exchange {
         return $this->decimal_to_precision($fee, 0, $this->currencies[$currency]['precision']);
     }
 
+    public function safe_network($networkId) {
+        $lastCharacterIndex = strlen($networkId) - 1;
+        $lastCharacter = $networkId[$lastCharacterIndex];
+        if ($lastCharacter === '1') {
+            $networkId = mb_substr($networkId, 0, $lastCharacterIndex - 0);
+        }
+        $networksById = array();
+        return $this->safe_string($networksById, $networkId, $networkId);
+    }
+
     public function parse_deposit_address($depositAddress, $currency = null) {
         //
         //     {
-        //         $currency => "eth",
+        //         $currency => "usdt",
         //         $address => "0xf7292eb9ba7bc50358e27f0e025a4d225a64127b",
         //         addressTag => "",
-        //         chain => "eth"
+        //         chain => "usdterc20", // trc20usdt, hrc20usdt, usdt, algousdt
         //     }
         //
         $address = $this->safe_string($depositAddress, 'address');
         $tag = $this->safe_string($depositAddress, 'addressTag');
+        if ($tag === '') {
+            $tag = null;
+        }
         $currencyId = $this->safe_string($depositAddress, 'currency');
-        $code = $this->safe_currency_code($currencyId);
+        $currency = $this->safe_currency($currencyId, $currency);
+        $code = $this->safe_currency_code($currencyId, $currency);
+        $networkId = $this->safe_string($depositAddress, 'chain');
+        $networks = $this->safe_value($currency, 'networks', array());
+        $networksById = $this->index_by($networks, 'id');
+        $networkValue = $this->safe_value($networksById, $networkId, $networkId);
+        $network = $this->safe_string($networkValue, 'network');
         $this->check_address($address);
         return array(
             'currency' => $code,
             'address' => $address,
             'tag' => $tag,
+            'network' => $network,
             'info' => $depositAddress,
         );
     }
 
-    public function fetch_deposit_address($code, $params = array ()) {
+    public function fetch_deposit_addresses_by_network($code, $params = array ()) {
         $this->load_markets();
         $currency = $this->currency($code);
         $request = array(
@@ -1366,34 +1438,47 @@ class huobi extends Exchange {
         //                 $currency => "eth",
         //                 address => "0xf7292eb9ba7bc50358e27f0e025a4d225a64127b",
         //                 addressTag => "",
-        //                 $chain => "eth"
+        //                 chain => "eth"
         //             }
         //         )
         //     }
         //
         $data = $this->safe_value($response, 'data', array());
-        $chain = $this->safe_string($params, 'chain');
-        if ($chain === null) {
-            $network = $this->safe_string($params, 'network');
-            if ($network === null) {
-                return $this->parse_deposit_address($this->safe_value($data, 0, array()), $currency);
+        $parsed = $this->parse_deposit_addresses($data, array( $code ), false);
+        return $this->index_by($parsed, 'network');
+    }
+
+    public function fetch_deposit_address($code, $params = array ()) {
+        $rawNetwork = $this->safe_string_upper($params, 'network');
+        $networks = $this->safe_value($this->options, 'networks', array());
+        $network = $this->safe_string_upper($networks, $rawNetwork, $rawNetwork);
+        $params = $this->omit($params, 'network');
+        $response = $this->fetch_deposit_addresses_by_network($code, $params);
+        $result = null;
+        if ($network === null) {
+            $result = $this->safe_value($response, $code);
+            if ($result === null) {
+                $alias = $this->safe_string($networks, $code, $code);
+                $result = $this->safe_value($response, $alias);
+                if ($result === null) {
+                    $defaultNetwork = $this->safe_string($this->options, 'defaultNetwork', 'ERC20');
+                    $result = $this->safe_value($response, $defaultNetwork);
+                    if ($result === null) {
+                        $values = is_array($response) ? array_values($response) : array();
+                        $result = $this->safe_value($values, 0);
+                        if ($result === null) {
+                            throw new InvalidAddress($this->id . ' fetchDepositAddress() cannot find deposit address for ' . $code);
+                        }
+                    }
+                }
             }
-            $networks = $this->safe_value($this->options, 'networks', array());
-            $chain = $this->safe_string_lower($networks, $network, $network);
-            // possible chains - usdterc20, trc20usdt, hrc20usdt, usdt, algousdt
-            if ($chain === 'erc20') {
-                $chain = $currency['id'] . $chain;
-            } else {
-                $chain = $chain . $currency['id'];
-            }
+            return $result;
         }
-        for ($i = 0; $i < count($data); $i++) {
-            $entry = $data[$i];
-            $entryChain = $this->safe_string($entry, 'chain');
-            if ($entryChain === $chain) {
-                return $this->parse_deposit_address($entry, $currency);
-            }
+        $result = $this->safe_value($response, $network);
+        if ($result === null) {
+            throw new InvalidAddress($this->id . ' fetchDepositAddress() cannot find ' . $network . ' deposit address for ' . $code);
         }
+        return $result;
     }
 
     public function fetch_deposits($code = null, $since = null, $limit = null, $params = array ()) {

@@ -101,6 +101,9 @@ php -f path/to/example.php # substitute for actual filename here
 
 [ccxt 를 사용하여 가상화폐 데이터 다운로드하기](https://antilibrary.org/2174) – A Korean translation of the above article.
 
+[Getting started with CCXT Crypto Exchange Library and Python
+](https://medium.com/@pknerd/getting-started-with-ccxt-crypto-exchange-library-and-python-93175d5a898d) – An article on using CCXT to pull different kinds of data from exchanges and for trading automation.
+
 [Experiments : Creating a Crypto Twitter Bot to Announce Newly Listed CryptoCoins](https://medium.com/@kennychuaio/experiments-creating-a-crypto-twitter-bot-to-announce-newly-listed-cryptocoins-9cd23930f5cb) – An article on how to integrate with CCXT and Twitter to get new currencies from exchanges automatically.
 
 [CCXT Exercise Index (Python)](https://coil.com/p/sarantium/CCXT-Exercise-Index/U3-ljsKK1) – All CCXT exercises for Python by number and subject. It will be continuously updated as more exercises are added!
@@ -135,11 +138,17 @@ php -f path/to/example.php # substitute for actual filename here
 
 [Using Apache Airflow ETL to fetch and analyze BTC data](https://itnext.io/using-apache-airflow-etl-to-fetch-and-analyze-btc-data-1adab96c410c) – how to use CCXT with Apache Airflow ETL for Bitcoin pricing data analysis.
 
-[비트코인 해외 거래소 API - 바이낸스 CCXT설치](https://www.youtube.com/watch?v=7dMGbjwZwlU) – Using CCXT to trade with Binance API.
+[Generic Position and Pnl Calculation](https://norman-lm-fung.medium.com/generic-position-and-pnl-calculation-67de9a9829be) – Using CCXT for fetching positions to calculate PnL.
+
+[TensorTrade: Trade Efficiently with Reinforcement Learning](https://github.com/tensortrade-org/tensortrade) – TensorTrade is an open source Python framework for building, training, evaluating, and deploying robust trading algorithms using reinforcement learning.
+
+[Never Pay Fees Again: Mimic Market Buys with Limit Chase Orders in Python](https://nukewhales.com/p/limitchase.html) – A tutorial on how to automate your maker fees.
+
+[비트코인 해외 거래소 API - 바이낸스 CCXT설치](https://www.youtube.com/watch?v=7dMGbjwZwlU) – Using CCXT to trade with Binance API, a video overview of CCXT in Korean.
 
 [ccxt_라이브러리](https://www.youtube.com/watch?v=ifkJ5FtMpKY) – A quick short demo of CCXT on YouTube.
 
-[비트코인 해외 거래소 API - 바이낸스 CCXT설치](https://www.youtube.com/watch?v=7dMGbjwZwlU) – A video overview of CCXT in Korean.
+https://www.youtube.com/watch?v=K-EZ9QXezZM
 
 [CCXTが便利な理由！CCXTライブラリをインストールしよう](https://ryota-trade.com/?p=476) – An article in Japanese on getting CCXT up and runining.
 
@@ -158,6 +167,10 @@ php -f path/to/example.php # substitute for actual filename here
 [ccxtの使い方:pythonで価格取得や残高確認できるAPI ccxt](https://oretano.com/ccxt-resume) – An nice overview of using CCXT in Python.
 
 [CCXT 开发手册](https://www.chainside.info/ccxt-dev-book/ccxt-01-%E5%BC%80%E5%8F%91%E6%89%8B%E5%86%8C%E7%AE%80%E4%BB%8B/) – CCXT Manual translated to Chinese.
+
+[交易所接口开发 使用CCXT连接BINANCE交易所获取行情 StudyQuant](https://www.youtube.com/watch?v=SlHBhE_Kz0Y) – A video tutorial on CCXT in Chinese (part 1).
+
+[交易所接口开发 2使用CCXT连接BINANCE交易所获取订单余额 StudyQuant](https://www.youtube.com/watch?v=K-EZ9QXezZM) – A video tutorial on CCXT in Chinese (part 2).
 
 [如何学习CCXT框架，CCXT框架的使用以及修改交易所的API设置。 讲解如何学习CCXT框架，如何修改和设置CCXT框架中交易所实例的内容设置， 如何获取Tick和行情数据等。](https://www.youtube.com/watch?v=sj8g3gz0k24) – A video on getting started with CCXT and working with market data.
 

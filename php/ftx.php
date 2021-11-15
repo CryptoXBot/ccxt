@@ -47,7 +47,7 @@ class ftx extends Exchange {
                 'fetchDepositAddress' => true,
                 'fetchDeposits' => true,
                 'fetchFundingFees' => null,
-                'fetchFundingRate' => null,
+                'fetchFundingRate' => true,
                 'fetchFundingHistory' => true,
                 'fetchFundingRateHistory' => true,
                 'fetchFundingRates' => null,
@@ -293,7 +293,6 @@ class ftx extends Exchange {
                 'exact' => array(
                     'Please slow down' => '\\ccxt\\RateLimitExceeded', // array("error":"Please slow down","success":false)
                     'Size too small for provide' => '\\ccxt\\InvalidOrder', // array("error":"Size too small for provide","success":false)
-                    'Not logged in' => '\\ccxt\\AuthenticationError', // array("error":"Not logged in","success":false)
                     'Not enough balances' => '\\ccxt\\InsufficientFunds', // array("error":"Not enough balances","success":false)
                     'InvalidPrice' => '\\ccxt\\InvalidOrder', // array("error":"Invalid price","success":false)
                     'Size too small' => '\\ccxt\\InvalidOrder', // array("error":"Size too small","success":false)
@@ -309,8 +308,12 @@ class ftx extends Exchange {
                     'Invalid reduce-only order' => '\\ccxt\\InvalidOrder', // array("error":"Invalid reduce-only order","success":false)
                     'Account does not have enough balances' => '\\ccxt\\InsufficientFunds', // array("success":false,"error":"Account does not have enough balances")
                     'Not authorized for subaccount-specific access' => '\\ccxt\\PermissionDenied', // array("success":false,"error":"Not authorized for subaccount-specific access")
+                    'Not approved to trade this product' => '\\ccxt\\PermissionDenied', // array("success":false,"error":"Not approved to trade this product")
                 ),
                 'broad' => array(
+                    // array("error":"Not logged in","success":false)
+                    // array("error":"Not logged in => Invalid API key","success":false)
+                    'Not logged in' => '\\ccxt\\AuthenticationError',
                     'Account does not have enough margin for order' => '\\ccxt\\InsufficientFunds',
                     'Invalid parameter' => '\\ccxt\\BadRequest', // array("error":"Invalid parameter start_time","success":false)
                     'The requested URL was not found on the server' => '\\ccxt\\BadRequest',
@@ -443,6 +446,30 @@ class ftx extends Exchange {
         //         ),
         //     }
         //
+        //     {
+        //         name => "BTC-PERP",
+        //         enabled =>  true,
+        //         postOnly =>  false,
+        //         $priceIncrement => "1.0",
+        //         $sizeIncrement => "0.0001",
+        //         minProvideSize => "0.001",
+        //         last => "60397.0",
+        //         bid => "60387.0",
+        //         ask => "60388.0",
+        //         price => "60388.0",
+        //         $type => "future",
+        //         baseCurrency =>  null,
+        //         quoteCurrency =>  null,
+        //         underlying => "BTC",
+        //         restricted =>  false,
+        //         highLeverageFeeExempt =>  true,
+        //         change1h => "-0.0036463231533270636",
+        //         change24h => "-0.01844838515677064",
+        //         changeBod => "-0.010130151132675475",
+        //         quoteVolume24h => "2892083192.6099",
+        //         volumeUsd24h => "2892083192.6099"
+        //     }
+        //
         $result = array();
         $markets = $this->safe_value($response, 'result', array());
         for ($i = 0; $i < count($markets); $i++) {
@@ -486,6 +513,9 @@ class ftx extends Exchange {
                     'cost' => array(
                         'min' => null,
                         'max' => null,
+                    ),
+                    'leverage' => array(
+                        'max' => 20,
                     ),
                 ),
                 'info' => $market,
@@ -1003,24 +1033,34 @@ class ftx extends Exchange {
         );
     }
 
-    public function fetch_funding_rate_history($symbol, $limit = null, $since = null, $params = array ()) {
+    public function fetch_funding_rate_history($symbol = null, $since = null, $limit = null, $params = array ()) {
         //
         // Gets a history of funding $rates with their timestamps
         //  (param) $symbol => Future currency pair (e.g. "BTC-PERP")
         //  (param) $limit => Not used by ftx
-        //  (param) $since => Unix timestamp in miliseconds for the time of the earliest requested funding rate
-        //  return => [array($symbol, fundingRate, timestamp)]
+        //  (param) $since => Unix $timestamp in miliseconds for the time of the earliest requested funding rate
+        //  (param) $params => Object containing more $params for the $request
+        //             - until => Unix $timestamp in miliseconds for the time of the earliest requested funding rate
+        //  return => [array($symbol, fundingRate, $timestamp)]
         //
         $this->load_markets();
-        $market = $this->market($symbol);
-        $request = array(
-            'future' => $market['id'],
-        );
-        if ($since !== null) {
-            $request['start_time'] = $since / 1000;
+        $request = array();
+        if ($symbol !== null) {
+            $market = $this->market($symbol);
+            $request['future'] = $market['id'];
         }
-        $method = 'publicGetFundingRates';
-        $response = $this->$method (array_merge($request, $params));
+        if ($since !== null) {
+            $request['start_time'] = intval($since / 1000);
+        }
+        $till = $this->safe_integer($params, 'till'); // unified in milliseconds
+        $endTime = $this->safe_string($params, 'end_time'); // exchange-specific in seconds
+        $params = $this->omit($params, array( 'end_time', 'till' ));
+        if ($till !== null) {
+            $request['end_time'] = intval($till / 1000);
+        } else if ($endTime !== null) {
+            $request['end_time'] = $endTime;
+        }
+        $response = $this->publicGetFundingRates (array_merge($request, $params));
         //
         //     {
         //        "success" => true,
@@ -1036,13 +1076,20 @@ class ftx extends Exchange {
         $result = $this->safe_value($response, 'result');
         $rates = array();
         for ($i = 0; $i < count($result); $i++) {
+            $entry = $result[$i];
+            $marketId = $this->safe_string($entry, 'future');
+            $symbol = $this->safe_symbol($marketId);
+            $timestamp = $this->parse8601($this->safe_string($result[$i], 'time'));
             $rates[] = array(
-                'symbol' => $this->safe_string($result[$i], 'future'),
-                'fundingRate' => $this->safe_number($result[$i], 'rate'),
-                'timestamp' => $this->parse8601($this->safe_string($result[$i], 'time')),
+                'info' => $entry,
+                'symbol' => $symbol,
+                'fundingRate' => $this->safe_number($entry, 'rate'),
+                'timestamp' => $timestamp,
+                'datetime' => $this->iso8601($timestamp),
             );
         }
-        return $this->sort_by($rates, 'timestamp');
+        $sorted = $this->sort_by($rates, 'timestamp');
+        return $this->filter_by_symbol_since_limit($sorted, $symbol, $since, $limit);
     }
 
     public function fetch_balance($params = array ()) {
@@ -1195,12 +1242,12 @@ class ftx extends Exchange {
         $id = $this->safe_string($order, 'id');
         $timestamp = $this->parse8601($this->safe_string($order, 'createdAt'));
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
-        $amount = $this->safe_number($order, 'size');
-        $filled = $this->safe_number($order, 'filledSize');
-        $remaining = $this->safe_number($order, 'remainingSize');
-        if (($remaining === 0.0) && ($amount !== null) && ($filled !== null)) {
-            $remaining = max ($amount - $filled, 0);
-            if ($remaining > 0) {
+        $amount = $this->safe_string($order, 'size');
+        $filled = $this->safe_string($order, 'filledSize');
+        $remaining = $this->safe_string($order, 'remainingSize');
+        if (Precise::string_equals($remaining, '0')) {
+            $remaining = Precise::string_sub($amount, $filled);
+            if (Precise::string_gt($remaining, '0')) {
                 $status = 'canceled';
             }
         }
@@ -1221,17 +1268,13 @@ class ftx extends Exchange {
         }
         $side = $this->safe_string($order, 'side');
         $type = $this->safe_string($order, 'type');
-        $average = $this->safe_number($order, 'avgFillPrice');
-        $price = $this->safe_number_2($order, 'price', 'triggerPrice', $average);
-        $cost = null;
-        if ($filled !== null && $price !== null) {
-            $cost = $filled * $price;
-        }
+        $average = $this->safe_string($order, 'avgFillPrice');
+        $price = $this->safe_string_2($order, 'price', 'triggerPrice', $average);
         $lastTradeTimestamp = $this->parse8601($this->safe_string($order, 'triggeredAt'));
         $clientOrderId = $this->safe_string($order, 'clientId');
         $stopPrice = $this->safe_number($order, 'triggerPrice');
         $postOnly = $this->safe_value($order, 'postOnly');
-        return array(
+        return $this->safe_order2(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => $clientOrderId,
@@ -1246,14 +1289,14 @@ class ftx extends Exchange {
             'price' => $price,
             'stopPrice' => $stopPrice,
             'amount' => $amount,
-            'cost' => $cost,
+            'cost' => null,
             'average' => $average,
             'filled' => $filled,
             'remaining' => $remaining,
             'status' => $status,
             'fee' => null,
             'trades' => null,
-        );
+        ), $market);
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
@@ -1886,6 +1929,7 @@ class ftx extends Exchange {
             'currency' => $code,
             'address' => $address,
             'tag' => $tag,
+            'network' => null,
             'info' => $response,
         );
     }
@@ -1895,6 +1939,7 @@ class ftx extends Exchange {
             // what are other $statuses here?
             'confirmed' => 'ok', // deposits
             'complete' => 'ok', // withdrawals
+            'cancelled' => 'canceled', // deposits
         );
         return $this->safe_string($statuses, $status, $status);
     }
@@ -2154,12 +2199,12 @@ class ftx extends Exchange {
             $parsed = $this->parse_income ($entry, $market);
             $result[] = $parsed;
         }
-        return $this->filter_by_since_limit($result, $since, $limit, 'timestamp');
+        $sorted = $this->sort_by($result, 'timestamp');
+        return $this->filter_by_since_limit($sorted, $since, $limit, 'timestamp');
     }
 
     public function fetch_funding_history($symbol = null, $since = null, $limit = null, $params = array ()) {
         $this->load_markets();
-        $method = 'private_get_funding_payments';
         $request = array();
         $market = null;
         if ($symbol !== null) {
@@ -2169,8 +2214,73 @@ class ftx extends Exchange {
         if ($since !== null) {
             $request['startTime'] = $since;
         }
-        $response = $this->$method (array_merge($request, $params));
+        $response = $this->privateGetFundingPayments (array_merge($request, $params));
         $result = $this->safe_value($response, 'result', array());
         return $this->parse_incomes ($result, $market, $since, $limit);
+    }
+
+    public function parse_funding_rate($fundingRate, $market = null) {
+        //
+        // perp
+        //     {
+        //       "volume" => "71294.7636",
+        //       "$nextFundingRate" => "0.000033",
+        //       "nextFundingTime" => "2021-10-14T20:00:00+00:00",
+        //       "openInterest" => "47142.994"
+        //     }
+        //
+        // delivery
+        //     {
+        //       "volume" => "4998.727",
+        //       "predictedExpirationPrice" => "3798.820141757",
+        //       "openInterest" => "48307.96"
+        //     }
+        //
+        $nextFundingRate = $this->safe_number($fundingRate, 'nextFundingRate');
+        $nextFundingRateDatetimeRaw = $this->safe_string($fundingRate, 'nextFundingTime');
+        $nextFundingRateTimestamp = $this->parse8601($nextFundingRateDatetimeRaw);
+        $previousFundingTimestamp = null;
+        if ($nextFundingRateTimestamp !== null) {
+            $previousFundingTimestamp = $nextFundingRateTimestamp - 3600000;
+        }
+        $estimatedSettlePrice = $this->safe_number($fundingRate, 'predictedExpirationPrice');
+        return array(
+            'info' => $fundingRate,
+            'symbol' => $market['symbol'],
+            'markPrice' => null,
+            'indexPrice' => null,
+            'interestRate' => $this->parse_number('0'),
+            'estimatedSettlePrice' => $estimatedSettlePrice,
+            'timestamp' => null,
+            'datetime' => null,
+            'previousFundingRate' => null,
+            'nextFundingRate' => $nextFundingRate,
+            'previousFundingTimestamp' => $previousFundingTimestamp, // subtract 8 hours
+            'nextFundingTimestamp' => $nextFundingRateTimestamp,
+            'previousFundingDatetime' => $this->iso8601($previousFundingTimestamp),
+            'nextFundingDatetime' => $this->iso8601($nextFundingRateTimestamp),
+        );
+    }
+
+    public function fetch_funding_rate($symbol, $params = array ()) {
+        $this->load_markets();
+        $market = $this->market($symbol);
+        $request = array(
+            'future_name' => $market['id'],
+        );
+        $response = $this->publicGetFuturesFutureNameStats (array_merge($request, $params));
+        //
+        //     {
+        //       "success" => true,
+        //       "$result" => {
+        //         "volume" => "71294.7636",
+        //         "nextFundingRate" => "0.000033",
+        //         "nextFundingTime" => "2021-10-14T20:00:00+00:00",
+        //         "openInterest" => "47142.994"
+        //       }
+        //     }
+        //
+        $result = $this->safe_value($response, 'result', array());
+        return $this->parse_funding_rate($result, $market);
     }
 }

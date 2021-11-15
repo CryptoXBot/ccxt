@@ -146,7 +146,10 @@ class aofex(Exchange):
                 },
             },
             'commonCurrencies': {
+                'AQT': 'AOFEX AQT',
                 'CPC': 'Consensus Planet Coin',
+                'HERO': 'Step Hero',  # conflict with Metahero
+                'XBT': 'XBT',  # conflict with BTC
             },
         })
 
@@ -217,6 +220,8 @@ class aofex(Exchange):
                 'quoteId': quoteId,
                 'base': base,
                 'quote': quote,
+                'type': 'spot',
+                'spot': True,
                 'active': None,
                 'maker': makerFee,
                 'taker': takerFee,
@@ -238,7 +243,7 @@ class aofex(Exchange):
                         'max': None,
                     },
                 },
-                'info': market,
+                'info': self.extend(market, precision),
             })
         return result
 
@@ -685,38 +690,27 @@ class aofex(Exchange):
         side = self.safe_string(order, 'side')
         # amount = self.safe_number(order, 'number')
         # price = self.safe_number(order, 'price')
-        cost = None
         price = None
         amount = None
         average = None
-        number = self.safe_number(order, 'number')
-        totalPrice = self.safe_number(order, 'total_price')
+        number = self.safe_string(order, 'number')
+        # total_price is just the price times the amount
+        # but it doesn't tell us anything about the filled price
         if type == 'limit':
             amount = number
-            price = self.safe_number(order, 'price')
+            price = self.safe_string(order, 'price')
         else:
-            average = self.safe_number(order, 'deal_price')
+            average = self.safe_string(order, 'deal_price')
             if side == 'buy':
-                amount = self.safe_number(order, 'deal_number')
+                amount = self.safe_string(order, 'deal_number')
             else:
                 amount = number
         # all orders except new orders and canceled orders
         rawTrades = self.safe_value(order, 'trades', [])
-        for i in range(0, len(rawTrades)):
-            rawTrades[i]['direction'] = side
-        trades = self.parse_trades(rawTrades, market, None, None, {
-            'symbol': market['symbol'],
-            'order': id,
-            'type': type,
-        })
-        if type == 'limit':
-            cost = totalPrice
-        elif side == 'buy':
-            cost = number
         filled = None
         if (type == 'limit') and (orderStatus == '3'):
             filled = amount
-        return self.safe_order({
+        return self.safe_order2({
             'info': order,
             'id': id,
             'clientOrderId': None,
@@ -731,14 +725,14 @@ class aofex(Exchange):
             'side': side,
             'price': price,
             'stopPrice': None,
-            'cost': cost,
+            'cost': None,
             'average': average,
             'amount': amount,
             'filled': filled,
             'remaining': None,
-            'trades': trades,
+            'trades': rawTrades,
             'fee': None,
-        })
+        }, market)
 
     def fetch_closed_order(self, id, symbol=None, params={}):
         self.load_markets()
@@ -864,16 +858,7 @@ class aofex(Exchange):
         #     }
         #
         result = self.safe_value(response, 'result', {})
-        order = self.parse_order(result, market)
-        timestamp = self.milliseconds()
-        return self.extend(order, {
-            'timestamp': timestamp,
-            'datetime': self.iso8601(timestamp),
-            'amount': amount,
-            'price': price,
-            'type': type,
-            'side': side,
-        })
+        return self.parse_order(result, market)
 
     def cancel_order(self, id, symbol=None, params={}):
         self.load_markets()

@@ -94,11 +94,13 @@ class bitforex extends Exchange {
                 ),
             ),
             'commonCurrencies' => array(
+                'BKC' => 'Bank Coin',
                 'CAPP' => 'Crypto Application Token',
                 'CREDIT' => 'TerraCredit',
                 'CTC' => 'Culture Ticket Chain',
                 'IQ' => 'IQ.Cash',
                 'MIR' => 'MIR COIN',
+                'NOIA' => 'METANOIA',
                 'TON' => 'To The Moon',
             ),
             'exceptions' => array(
@@ -155,6 +157,8 @@ class bitforex extends Exchange {
                 'quote' => $quote,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
+                'type' => 'spot',
+                'spot' => true,
                 'active' => $active,
                 'precision' => $precision,
                 'limits' => $limits,
@@ -352,10 +356,10 @@ class bitforex extends Exchange {
         $sideId = $this->safe_integer($order, 'tradeType');
         $side = $this->parse_side($sideId);
         $type = null;
-        $price = $this->safe_number($order, 'orderPrice');
-        $average = $this->safe_number($order, 'avgPrice');
-        $amount = $this->safe_number($order, 'orderAmount');
-        $filled = $this->safe_number($order, 'dealAmount');
+        $price = $this->safe_string($order, 'orderPrice');
+        $average = $this->safe_string($order, 'avgPrice');
+        $amount = $this->safe_string($order, 'orderAmount');
+        $filled = $this->safe_string($order, 'dealAmount');
         $status = $this->parse_order_status($this->safe_string($order, 'orderState'));
         $feeSide = ($side === 'buy') ? 'base' : 'quote';
         $feeCurrency = $market[$feeSide];
@@ -363,7 +367,7 @@ class bitforex extends Exchange {
             'cost' => $this->safe_number($order, 'tradeFee'),
             'currency' => $feeCurrency,
         );
-        return $this->safe_order(array(
+        return $this->safe_order2(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,
@@ -385,7 +389,7 @@ class bitforex extends Exchange {
             'status' => $status,
             'fee' => $fee,
             'trades' => null,
-        ));
+        ), $market);
     }
 
     public function fetch_order($id, $symbol = null, $params = array ()) {

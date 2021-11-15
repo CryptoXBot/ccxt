@@ -386,6 +386,8 @@ module.exports = class stex extends Exchange {
                 'baseNumericId': baseNumericId,
                 'quoteNumericId': quoteNumericId,
                 'info': market,
+                'type': 'spot',
+                'spot': true,
                 'active': active,
                 'maker': fee,
                 'taker': fee,
@@ -1441,6 +1443,7 @@ module.exports = class stex extends Exchange {
             'currency': code,
             'address': address,
             'tag': tag,
+            'network': undefined,
             'info': response,
         };
     }

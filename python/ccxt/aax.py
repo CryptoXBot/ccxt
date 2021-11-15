@@ -268,6 +268,7 @@ class aax(Exchange):
                 'networks': {
                     'ETH': 'ERC20',
                     'TRX': 'TRC20',
+                    'SOL': 'SPL',
                 },
             },
         })
@@ -619,9 +620,11 @@ class aax(Exchange):
         # public fetchTrades
         #
         #     {
-        #         "p":"9395.50000000",
-        #         "q":"50.000000",
-        #         "t":1592563996718
+        #         "i":"T1qzQeZG9g",
+        #         "p":"-61348.81000000",
+        #         "q":"0.045400",
+        #         "s":"sell",
+        #         "t":1635731102731
         #     }
         #
         # private fetchMyTrades
@@ -660,11 +663,10 @@ class aax(Exchange):
         if timestamp is None:
             timestamp = self.parse8601(self.safe_string(trade, 'createTime'))
         id = self.safe_string_2(trade, 'tid', 'tradeID')
-        symbol = None
+        id = self.safe_string(trade, 'i', id)
         marketId = self.safe_string(trade, 'symbol')
         market = self.safe_market(marketId, market)
-        if market is not None:
-            symbol = market['symbol']
+        symbol = market['symbol']
         priceString = self.safe_string_2(trade, 'p', 'filledPrice')
         amountString = self.safe_string_2(trade, 'q', 'filledQty')
         orderId = self.safe_string(trade, 'orderID')
@@ -680,12 +682,9 @@ class aax(Exchange):
         if side is None:
             side = 'sell' if (priceString[0] == '-') else 'buy'
         priceString = Precise.string_abs(priceString)
-        price = self.parse_number(priceString)
-        amount = self.parse_number(amountString)
-        cost = self.parse_number(Precise.string_mul(priceString, amountString))
         orderType = self.parse_order_type(self.safe_string(trade, 'orderType'))
         fee = None
-        feeCost = self.safe_number(trade, 'commission')
+        feeCost = self.safe_string(trade, 'commission')
         if feeCost is not None:
             feeCurrency = None
             if market is not None:
@@ -697,7 +696,7 @@ class aax(Exchange):
                 'currency': feeCurrency,
                 'cost': feeCost,
             }
-        return {
+        return self.safe_trade({
             'info': trade,
             'id': id,
             'timestamp': timestamp,
@@ -707,11 +706,11 @@ class aax(Exchange):
             'side': side,
             'order': orderId,
             'takerOrMaker': takerOrMaker,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': None,
             'fee': fee,
-        }
+        }, market)
 
     def fetch_trades(self, symbol, since=None, limit=None, params={}):
         self.load_markets()
@@ -725,11 +724,12 @@ class aax(Exchange):
         response = self.publicGetMarketTrades(request)
         #
         #     {
-        #         "e":"BTCUSDFP@trades",
-        #         "trades": [
-        #             {"p":"9395.50000000","q":"50.000000","t":1592563996718},
-        #             {"p":"9395.50000000","q":"50.000000","t":1592563993577},
-        #         ],
+        #         "e":"BTCUSDT@trades",
+        #         "trades":[
+        #             {"i":"T1qzQeZG9g","p":"-61348.81000000","q":"0.045400","s":"sell","t":1635731102731},
+        #             {"i":"T1qzQeU6UK","p":"61343.10000000","q":"0.179300","s":"buy","t":1635731102133},
+        #             {"i":"T1qzQe5BQm","p":"-61346.02000000","q":"0.021100","s":"sell","t":1635731099231},
+        #         ]
         #     }
         #
         trades = self.safe_value(response, 'trades', [])
@@ -1367,8 +1367,8 @@ class aax(Exchange):
             # 'base': market['baseId'],
             # 'quote': market['quoteId'],
             # 'orderStatus': None,  # 1 new, 2 filled, 3 canceled
-            # 'startDate': self.ymd(since),
-            # 'endDate': self.ymd(self.milliseconds()),
+            # 'startDate': self.yyyymmdd(since),
+            # 'endDate': self.yyyymmdd(self.milliseconds()),
             # 'orderType': None,  # MARKET, LIMIT, STOP, STOP-LIMIT
             # 'side': 'None',  # BUY, SELL
             # 'clOrdID': clientOrderId,
@@ -1393,7 +1393,7 @@ class aax(Exchange):
         if limit is not None:
             request['pageSize'] = limit  # default 10
         if since is not None:
-            request['startDate'] = self.ymd(since)
+            request['startDate'] = self.yyyymmdd(since)
         response = getattr(self, method)(self.extend(request, params))
         #
         # spot
@@ -1578,16 +1578,16 @@ class aax(Exchange):
         marketId = self.safe_string(order, 'symbol')
         market = self.safe_market(marketId, market)
         symbol = market['symbol']
-        price = self.safe_number(order, 'price')
+        price = self.safe_string(order, 'price')
         stopPrice = self.safe_number(order, 'stopPrice')
         timeInForce = self.parse_time_in_force(self.safe_string(order, 'timeInForce'))
         execInst = self.safe_string(order, 'execInst')
         postOnly = (execInst == 'Post-Only')
-        average = self.safe_number(order, 'avgPrice')
-        amount = self.safe_number(order, 'orderQty')
-        filled = self.safe_number(order, 'cumQty')
-        remaining = self.safe_number(order, 'leavesQty')
-        if (filled == 0) and (remaining == 0):
+        average = self.safe_string(order, 'avgPrice')
+        amount = self.safe_string(order, 'orderQty')
+        filled = self.safe_string(order, 'cumQty')
+        remaining = self.safe_string(order, 'leavesQty')
+        if (Precise.string_equals(filled, '0')) and (Precise.string_equals(remaining, '0')):
             remaining = None
         lastTradeTimestamp = self.safe_value(order, 'transactTime')
         if isinstance(lastTradeTimestamp, basestring):
@@ -1605,7 +1605,7 @@ class aax(Exchange):
                 'currency': feeCurrency,
                 'cost': feeCost,
             }
-        return self.safe_order({
+        return self.safe_order2({
             'id': id,
             'info': order,
             'clientOrderId': clientOrderId,
@@ -1627,7 +1627,7 @@ class aax(Exchange):
             'cost': None,
             'trades': None,
             'fee': fee,
-        })
+        }, market)
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         self.load_markets()
@@ -1638,8 +1638,8 @@ class aax(Exchange):
             # 'orderID': id,
             # 'base': market['baseId'],
             # 'quote': market['quoteId'],
-            # 'startDate': self.ymd(since),
-            # 'endDate': self.ymd(self.milliseconds()),
+            # 'startDate': self.yyyymmdd(since),
+            # 'endDate': self.yyyymmdd(self.milliseconds()),
             # 'orderType': None,  # MARKET, LIMIT, STOP, STOP-LIMIT
             # 'side': 'None',  # BUY, SELL
         }
@@ -1659,7 +1659,7 @@ class aax(Exchange):
         if limit is not None:
             request['pageSize'] = limit  # default 10
         if since is not None:
-            request['startDate'] = self.ymd(since)
+            request['startDate'] = self.yyyymmdd(since)
         response = getattr(self, method)(self.extend(request, params))
         #
         #     {
