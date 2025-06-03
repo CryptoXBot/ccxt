@@ -4,9 +4,13 @@
 # https://github.com/ccxt/ccxt/blob/master/CONTRIBUTING.md#how-to-contribute-code
 
 from ccxt.base.exchange import Exchange
+from ccxt.abstract.timex import ImplicitAPI
+from ccxt.base.types import Any, Balances, Currencies, Currency, DepositAddress, Int, Market, Num, Order, OrderBook, OrderSide, OrderType, Str, Strings, Ticker, Tickers, Trade, TradingFeeInterface, Transaction
+from typing import List
 from ccxt.base.errors import ExchangeError
 from ccxt.base.errors import AuthenticationError
 from ccxt.base.errors import PermissionDenied
+from ccxt.base.errors import ArgumentsRequired
 from ccxt.base.errors import BadRequest
 from ccxt.base.errors import InsufficientFunds
 from ccxt.base.errors import InvalidOrder
@@ -14,12 +18,13 @@ from ccxt.base.errors import OrderNotFound
 from ccxt.base.errors import NotSupported
 from ccxt.base.errors import RateLimitExceeded
 from ccxt.base.errors import ExchangeNotAvailable
+from ccxt.base.decimal_to_precision import TICK_SIZE
 from ccxt.base.precise import Precise
 
 
-class timex(Exchange):
+class timex(Exchange, ImplicitAPI):
 
-    def describe(self):
+    def describe(self) -> Any:
         return self.deep_extend(super(timex, self).describe(), {
             'id': 'timex',
             'name': 'TimeX',
@@ -27,24 +32,70 @@ class timex(Exchange):
             'version': 'v1',
             'rateLimit': 1500,
             'has': {
+                'CORS': None,
+                'spot': True,
+                'margin': False,
+                'swap': False,
+                'future': False,
+                'option': False,
+                'addMargin': False,
                 'cancelOrder': True,
                 'cancelOrders': True,
-                'CORS': None,
                 'createOrder': True,
+                'createReduceOnlyOrder': False,
+                'createStopLimitOrder': False,
+                'createStopMarketOrder': False,
+                'createStopOrder': False,
                 'editOrder': True,
                 'fetchBalance': True,
+                'fetchBorrowRateHistories': False,
+                'fetchBorrowRateHistory': False,
                 'fetchClosedOrders': True,
+                'fetchCrossBorrowRate': False,
+                'fetchCrossBorrowRates': False,
                 'fetchCurrencies': True,
+                'fetchDeposit': False,
+                'fetchDepositAddress': True,
+                'fetchDepositAddresses': False,
+                'fetchDepositAddressesByNetwork': False,
+                'fetchDeposits': True,
+                'fetchFundingHistory': False,
+                'fetchFundingRate': False,
+                'fetchFundingRateHistory': False,
+                'fetchFundingRates': False,
+                'fetchIndexOHLCV': False,
+                'fetchIsolatedBorrowRate': False,
+                'fetchIsolatedBorrowRates': False,
+                'fetchLeverage': False,
+                'fetchLeverageTiers': False,
+                'fetchMarginMode': False,
                 'fetchMarkets': True,
+                'fetchMarkOHLCV': False,
                 'fetchMyTrades': True,
                 'fetchOHLCV': True,
+                'fetchOpenInterestHistory': False,
                 'fetchOpenOrders': True,
                 'fetchOrder': True,
                 'fetchOrderBook': True,
+                'fetchPosition': False,
+                'fetchPositionHistory': False,
+                'fetchPositionMode': False,
+                'fetchPositions': False,
+                'fetchPositionsForSymbol': False,
+                'fetchPositionsHistory': False,
+                'fetchPositionsRisk': False,
+                'fetchPremiumIndexOHLCV': False,
                 'fetchTicker': True,
                 'fetchTickers': True,
+                'fetchTime': True,
                 'fetchTrades': True,
                 'fetchTradingFee': True,  # maker fee only
+                'fetchWithdrawal': False,
+                'fetchWithdrawals': True,
+                'reduceMargin': False,
+                'setLeverage': False,
+                'setMarginMode': False,
+                'setPositionMode': False,
             },
             'timeframes': {
                 '1m': 'I1',
@@ -61,17 +112,30 @@ class timex(Exchange):
             },
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/1294454/70423869-6839ab00-1a7f-11ea-8f94-13ae72c31115.jpg',
-                'api': 'https://plasma-relay-backend.timex.io',
+                'api': {
+                    'rest': 'https://plasma-relay-backend.timex.io',
+                },
                 'www': 'https://timex.io',
-                'doc': 'https://docs.timex.io',
+                'doc': 'https://plasma-relay-backend.timex.io/swagger-ui/index.html',
                 'referral': 'https://timex.io/?refcode=1x27vNkTbP1uwkCck',
             },
             'api': {
+                'addressbook': {
+                    'get': [
+                        'me',
+                    ],
+                    'post': [
+                        '',
+                        'id/{id}',
+                        'id/{id}/remove',
+                    ],
+                },
                 'custody': {
                     'get': [
                         'credentials',  # Get api key for address
                         'credentials/h/{hash}',  # Get api key by hash
                         'credentials/k/{key}',  # Get api key by key
+                        'credentials/me',
                         'credentials/me/address',  # Get api key by hash
                         'deposit-addresses',  # Get deposit addresses list
                         'deposit-addresses/h/{hash}',  # Get deposit address by hash
@@ -99,6 +163,13 @@ class timex(Exchange):
                         's/{symbol}/remove/prepare',  # Prepare remove currency by symbol
                         's/{symbol}/update/perform',  # Prepare update currency by symbol
                         's/{symbol}/update/prepare',  # Prepare update currency by symbol
+                    ],
+                },
+                'manager': {
+                    'get': [
+                        'deposits',
+                        'transfers',
+                        'withdrawals',
                     ],
                 },
                 'markets': {
@@ -160,6 +231,7 @@ class timex(Exchange):
                     ],
                 },
             },
+            'precisionMode': TICK_SIZE,
             'exceptions': {
                 'exact': {
                     '0': ExchangeError,
@@ -190,6 +262,7 @@ class timex(Exchange):
                 },
             },
             'options': {
+                'expireIn': 31536000,  # 365 × 24 × 60 × 60
                 'fetchTickers': {
                     'period': '1d',
                 },
@@ -208,9 +281,100 @@ class timex(Exchange):
                 'defaultSort': 'timestamp,asc',
                 'defaultSortOrders': 'createdAt,asc',
             },
+            'features': {
+                'spot': {
+                    'sandbox': False,
+                    'createOrder': {
+                        'marginMode': False,
+                        'triggerPrice': False,
+                        'triggerDirection': False,
+                        'triggerPriceType': None,
+                        'stopLossPrice': False,
+                        'takeProfitPrice': False,
+                        'attachedStopLossTakeProfit': None,
+                        # todo
+                        'timeInForce': {
+                            'IOC': True,
+                            'FOK': True,
+                            'PO': False,
+                            'GTD': True,
+                        },
+                        'hedged': False,
+                        'trailing': False,
+                        'leverage': False,
+                        'marketBuyByCost': False,
+                        'marketBuyRequiresPrice': False,
+                        'selfTradePrevention': False,
+                        'iceberg': False,
+                    },
+                    'createOrders': None,
+                    'fetchMyTrades': {
+                        'marginMode': False,
+                        'limit': 100,  # todo
+                        'daysBack': 100000,  # todo
+                        'untilDays': 100000,  # todo
+                        'symbolRequired': False,
+                    },
+                    'fetchOrder': {
+                        'marginMode': False,
+                        'trigger': False,
+                        'trailing': False,
+                        'symbolRequired': False,
+                    },
+                    'fetchOpenOrders': {
+                        'marginMode': False,
+                        'limit': 100,  # todo
+                        'trigger': False,
+                        'trailing': False,
+                        'symbolRequired': False,
+                    },
+                    'fetchOrders': None,  # todo
+                    'fetchClosedOrders': {
+                        'marginMode': False,
+                        'limit': 100,  # todo
+                        'daysBack': 100000,  # todo
+                        'daysBackCanceled': 1,  # todo
+                        'untilDays': 100000,  # todo
+                        'trigger': False,
+                        'trailing': False,
+                        'symbolRequired': False,
+                    },
+                    'fetchOHLCV': {
+                        'limit': None,
+                    },
+                },
+                'swap': {
+                    'linear': None,
+                    'inverse': None,
+                },
+                'future': {
+                    'linear': None,
+                    'inverse': None,
+                },
+            },
         })
 
-    def fetch_markets(self, params={}):
+    def fetch_time(self, params={}) -> Int:
+        """
+        fetches the current integer timestamp in milliseconds from the exchange server
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns int: the current integer timestamp in milliseconds from the exchange server
+        """
+        response = self.tradingviewGetTime(params)
+        #
+        #     1708682617
+        #
+        return self.parse_to_int(response) * 1000
+
+    def fetch_markets(self, params={}) -> List[Market]:
+        """
+        retrieves data on all markets for timex
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Public/listMarkets
+
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict[]: an array of objects representing market data
+        """
         response = self.publicGetMarkets(params)
         #
         #     [
@@ -233,12 +397,17 @@ class timex(Exchange):
         #         }
         #     ]
         #
-        result = []
-        for i in range(0, len(response)):
-            result.append(self.parse_market(response[i]))
-        return result
+        return self.parse_markets(response)
 
-    def fetch_currencies(self, params={}):
+    def fetch_currencies(self, params={}) -> Currencies:
+        """
+        fetches all available currencies on an exchange
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Public/listCurrencies
+
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: an associative dictionary of currencies
+        """
         response = self.publicGetCurrencies(params)
         #
         #     [
@@ -265,16 +434,138 @@ class timex(Exchange):
         #         },
         #     ]
         #
-        result = []
-        for i in range(0, len(response)):
-            currency = response[i]
-            result.append(self.parse_currency(currency))
-        return self.index_by(result, 'code')
+        return self.parse_currencies(response)
 
-    def fetch_tickers(self, symbols=None, params={}):
+    def fetch_deposits(self, code: Str = None, since: Int = None, limit: Int = None, params={}) -> List[Transaction]:
+        """
+        fetch all deposits made to an account
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Manager/getDeposits
+
+        :param str code: unified currency code
+        :param int [since]: the earliest time in ms to fetch deposits for
+        :param int [limit]: the maximum number of deposits structures to retrieve
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict[]: a list of `transaction structures <https://docs.ccxt.com/#/?id=transaction-structure>`
+        """
+        address = self.safe_string(params, 'address')
+        params = self.omit(params, 'address')
+        if address is None:
+            raise ArgumentsRequired(self.id + ' fetchDeposits() requires an address parameter')
+        request: dict = {
+            'address': address,
+        }
+        response = self.managerGetDeposits(self.extend(request, params))
+        #
+        #     [
+        #         {
+        #             "from": "0x1134cc86b45039cc211c6d1d2e4b3c77f60207ed",
+        #             "timestamp": "2022-01-01T00:00:00Z",
+        #             "to": "0x1134cc86b45039cc211c6d1d2e4b3c77f60207ed",
+        #             "token": "0x6baad3fe5d0fd4be604420e728adbd68d67e119e",
+        #             "transferHash": "0x5464cdff35448314e178b8677ea41e670ea0f2533f4e52bfbd4e4a6cfcdef4c2",
+        #             "value": "100"
+        #         }
+        #     ]
+        #
+        currency = self.safe_currency(code)
+        return self.parse_transactions(response, currency, since, limit)
+
+    def fetch_withdrawals(self, code: Str = None, since: Int = None, limit: Int = None, params={}) -> List[Transaction]:
+        """
+        fetch all withdrawals made to an account
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Manager/getWithdraws
+
+        :param str code: unified currency code
+        :param int [since]: the earliest time in ms to fetch withdrawals for
+        :param int [limit]: the maximum number of transaction structures to retrieve
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict[]: a list of `transaction structures <https://docs.ccxt.com/#/?id=transaction-structure>`
+        """
+        address = self.safe_string(params, 'address')
+        params = self.omit(params, 'address')
+        if address is None:
+            raise ArgumentsRequired(self.id + ' fetchDeposits() requires an address parameter')
+        request: dict = {
+            'address': address,
+        }
+        response = self.managerGetWithdrawals(self.extend(request, params))
+        #
+        #     [
+        #         {
+        #             "from": "0x1134cc86b45039cc211c6d1d2e4b3c77f60207ed",
+        #             "timestamp": "2022-01-01T00:00:00Z",
+        #             "to": "0x1134cc86b45039cc211c6d1d2e4b3c77f60207ed",
+        #             "token": "0x6baad3fe5d0fd4be604420e728adbd68d67e119e",
+        #             "transferHash": "0x5464cdff35448314e178b8677ea41e670ea0f2533f4e52bfbd4e4a6cfcdef4c2",
+        #             "value": "100"
+        #         }
+        #     ]
+        #
+        currency = self.safe_currency(code)
+        return self.parse_transactions(response, currency, since, limit)
+
+    def get_currency_by_address(self, address):
+        currencies = self.currencies
+        for i in range(0, len(currencies)):
+            currency = currencies[i]
+            info = self.safe_value(currency, 'info', {})
+            a = self.safe_string(info, 'address')
+            if a == address:
+                return currency
+        return None
+
+    def parse_transaction(self, transaction: dict, currency: Currency = None) -> Transaction:
+        #
+        #     {
+        #         "from": "0x1134cc86b45039cc211c6d1d2e4b3c77f60207ed",
+        #         "timestamp": "2022-01-01T00:00:00Z",
+        #         "to": "0x1134cc86b45039cc211c6d1d2e4b3c77f60207ed",
+        #         "token": "0x6baad3fe5d0fd4be604420e728adbd68d67e119e",
+        #         "transferHash": "0x5464cdff35448314e178b8677ea41e670ea0f2533f4e52bfbd4e4a6cfcdef4c2",
+        #         "value": "100"
+        #     }
+        #
+        datetime = self.safe_string(transaction, 'timestamp')
+        currencyAddresss = self.safe_string(transaction, 'token', '')
+        currency = self.get_currency_by_address(currencyAddresss)
+        return {
+            'info': transaction,
+            'id': self.safe_string(transaction, 'transferHash'),
+            'txid': self.safe_string(transaction, 'txid'),
+            'timestamp': self.parse8601(datetime),
+            'datetime': datetime,
+            'network': None,
+            'address': None,
+            'addressTo': self.safe_string(transaction, 'to'),
+            'addressFrom': self.safe_string(transaction, 'from'),
+            'tag': None,
+            'tagTo': None,
+            'tagFrom': None,
+            'type': None,
+            'amount': self.safe_number(transaction, 'value'),
+            'currency': self.safe_currency_code(None, currency),
+            'status': 'ok',
+            'updated': None,
+            'internal': None,
+            'comment': None,
+            'fee': None,
+        }
+
+    def fetch_tickers(self, symbols: Strings = None, params={}) -> Tickers:
+        """
+        fetches price tickers for multiple markets, statistical information calculated over the past 24 hours for each market
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Public/listTickers
+
+        :param str[]|None symbols: unified symbols of the markets to fetch the ticker for, all market tickers are returned if not assigned
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: a dictionary of `ticker structures <https://docs.ccxt.com/#/?id=ticker-structure>`
+        """
         self.load_markets()
         period = self.safe_string(self.options['fetchTickers'], 'period', '1d')
-        request = {
+        request: dict = {
             'period': self.timeframes[period],  # I1, I5, I15, I30, H1, H2, H4, H6, H12, D1, W1
         }
         response = self.publicGetTickers(self.extend(request, params))
@@ -297,11 +588,20 @@ class timex(Exchange):
         #
         return self.parse_tickers(response, symbols)
 
-    def fetch_ticker(self, symbol, params={}):
+    def fetch_ticker(self, symbol: str, params={}) -> Ticker:
+        """
+        fetches a price ticker, a statistical calculation with the information calculated over the past 24 hours for a specific market
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Public/listTickers
+
+        :param str symbol: unified symbol of the market to fetch the ticker for
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: a `ticker structure <https://docs.ccxt.com/#/?id=ticker-structure>`
+        """
         self.load_markets()
         market = self.market(symbol)
         period = self.safe_string(self.options['fetchTickers'], 'period', '1d')
-        request = {
+        request: dict = {
             'market': market['id'],
             'period': self.timeframes[period],  # I1, I5, I15, I30, H1, H2, H4, H6, H12, D1, W1
         }
@@ -323,13 +623,23 @@ class timex(Exchange):
         #         }
         #     ]
         #
-        ticker = self.safe_value(response, 0)
+        ticker = self.safe_dict(response, 0)
         return self.parse_ticker(ticker, market)
 
-    def fetch_order_book(self, symbol, limit=None, params={}):
+    def fetch_order_book(self, symbol: str, limit: Int = None, params={}) -> OrderBook:
+        """
+        fetches information on open orders with bid(buy) and ask(sell) prices, volumes and other data
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Public/orderbookV2
+
+        :param str symbol: unified symbol of the market to fetch the order book for
+        :param int [limit]: the maximum amount of order book entries to return
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: A dictionary of `order book structures <https://docs.ccxt.com/#/?id=order-book-structure>` indexed by market symbols
+        """
         self.load_markets()
         market = self.market(symbol)
-        request = {
+        request: dict = {
             'market': market['id'],
         }
         if limit is not None:
@@ -362,14 +672,25 @@ class timex(Exchange):
         timestamp = self.parse8601(self.safe_string(response, 'timestamp'))
         return self.parse_order_book(response, symbol, timestamp, 'bid', 'ask', 'price', 'baseTokenAmount')
 
-    def fetch_trades(self, symbol, since=None, limit=None, params={}):
+    def fetch_trades(self, symbol: str, since: Int = None, limit: Int = None, params={}) -> List[Trade]:
+        """
+        get the list of most recent trades for a particular symbol
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Public/listTrades
+
+        :param str symbol: unified symbol of the market to fetch trades for
+        :param int [since]: timestamp in ms of the earliest trade to fetch
+        :param int [limit]: the maximum amount of trades to fetch
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns Trade[]: a list of `trade structures <https://docs.ccxt.com/#/?id=public-trades>`
+        """
         self.load_markets()
         market = self.market(symbol)
         options = self.safe_value(self.options, 'fetchTrades', {})
         defaultSort = self.safe_value(options, 'sort', 'timestamp,asc')
         sort = self.safe_string(params, 'sort', defaultSort)
         query = self.omit(params, 'sort')
-        request = {
+        request: dict = {
             # 'address': 'string',  # trade’s member account(?)
             # 'cursor': 1234,  # int64(?)
             # 'from': self.iso8601(since),
@@ -397,25 +718,46 @@ class timex(Exchange):
         #
         return self.parse_trades(response, market, since, limit)
 
-    def fetch_ohlcv(self, symbol, timeframe='1m', since=None, limit=None, params={}):
+    def fetch_ohlcv(self, symbol: str, timeframe='1m', since: Int = None, limit: Int = None, params={}) -> List[list]:
+        """
+        fetches historical candlestick data containing the open, high, low, and close price, and the volume of a market
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Public/listCandles
+
+        :param str symbol: unified symbol of the market to fetch OHLCV data for
+        :param str timeframe: the length of time each candle represents
+        :param int [since]: timestamp in ms of the earliest candle to fetch
+        :param int [limit]: the maximum amount of candles to fetch
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :param int [params.until]: timestamp in ms of the latest candle to fetch
+        :returns int[][]: A list of candles ordered, open, high, low, close, volume
+        """
         self.load_markets()
         market = self.market(symbol)
-        request = {
+        request: dict = {
             'market': market['id'],
-            'period': self.timeframes[timeframe],
+            'period': self.safe_string(self.timeframes, timeframe, timeframe),
         }
         # if since and limit are not specified
         duration = self.parse_timeframe(timeframe)
+        until = self.safe_integer(params, 'until')
+        if limit is None:
+            limit = 1000  # exchange provides tens of thousands of data, but we set generous default value
         if since is not None:
             request['from'] = self.iso8601(since)
-            if limit is not None:
+            if until is None:
                 request['till'] = self.iso8601(self.sum(since, self.sum(limit, 1) * duration * 1000))
-        elif limit is not None:
+            else:
+                request['till'] = self.iso8601(until)
+        elif until is not None:
+            request['till'] = self.iso8601(until)
+            fromTimestamp = until - self.sum(limit, 1) * duration * 1000
+            request['from'] = self.iso8601(fromTimestamp)
+        else:
             now = self.milliseconds()
             request['till'] = self.iso8601(now)
-            request['from'] = self.iso8601(now - limit * duration * 1000 - 1)
-        else:
-            request['till'] = self.iso8601(self.milliseconds())
+            request['from'] = self.iso8601(now - self.sum(limit, 1) * duration * 1000 - 1)
+        params = self.omit(params, 'until')
         response = self.publicGetCandles(self.extend(request, params))
         #
         #     [
@@ -432,19 +774,8 @@ class timex(Exchange):
         #
         return self.parse_ohlcvs(response, market, timeframe, since, limit)
 
-    def fetch_balance(self, params={}):
-        self.load_markets()
-        response = self.tradingGetBalances(params)
-        #
-        #     [
-        #         {"currency":"BTC","totalBalance":"0","lockedBalance":"0"},
-        #         {"currency":"AUDT","totalBalance":"0","lockedBalance":"0"},
-        #         {"currency":"ETH","totalBalance":"0","lockedBalance":"0"},
-        #         {"currency":"TIME","totalBalance":"0","lockedBalance":"0"},
-        #         {"currency":"USDT","totalBalance":"0","lockedBalance":"0"}
-        #     ]
-        #
-        result = {
+    def parse_balance(self, response) -> Balances:
+        result: dict = {
             'info': response,
             'timestamp': None,
             'datetime': None,
@@ -457,14 +788,53 @@ class timex(Exchange):
             account['total'] = self.safe_string(balance, 'totalBalance')
             account['used'] = self.safe_string(balance, 'lockedBalance')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
-    def create_order(self, symbol, type, side, amount, price=None, params={}):
+    def fetch_balance(self, params={}) -> Balances:
+        """
+        query for balance and get the amount of funds available for trading or funds locked in orders
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Trading/getBalances
+
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: a `balance structure <https://docs.ccxt.com/#/?id=balance-structure>`
+        """
+        self.load_markets()
+        response = self.tradingGetBalances(params)
+        #
+        #     [
+        #         {"currency":"BTC","totalBalance":"0","lockedBalance":"0"},
+        #         {"currency":"AUDT","totalBalance":"0","lockedBalance":"0"},
+        #         {"currency":"ETH","totalBalance":"0","lockedBalance":"0"},
+        #         {"currency":"TIME","totalBalance":"0","lockedBalance":"0"},
+        #         {"currency":"USDT","totalBalance":"0","lockedBalance":"0"}
+        #     ]
+        #
+        return self.parse_balance(response)
+
+    def create_order(self, symbol: str, type: OrderType, side: OrderSide, amount: float, price: Num = None, params={}):
+        """
+        create a trade order
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Trading/createOrder
+
+        :param str symbol: unified symbol of the market to create an order in
+        :param str type: 'market' or 'limit'
+        :param str side: 'buy' or 'sell'
+        :param float amount: how much of currency you want to trade in units of base currency
+        :param float [price]: the price at which the order is to be fulfilled, in units of the quote currency, ignored in market orders
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: an `order structure <https://docs.ccxt.com/#/?id=order-structure>`
+        """
         self.load_markets()
         market = self.market(symbol)
         uppercaseSide = side.upper()
         uppercaseType = type.upper()
-        request = {
+        postOnly = self.safe_bool(params, 'postOnly', False)
+        if postOnly:
+            uppercaseType = 'POST_ONLY'
+            params = self.omit(params, ['postOnly'])
+        request: dict = {
             'symbol': market['id'],
             'quantity': self.amount_to_precision(symbol, amount),
             'side': uppercaseSide,
@@ -474,7 +844,7 @@ class timex(Exchange):
             # 'expireTime': 1575523308,  # unix timestamp
         }
         query = params
-        if uppercaseType == 'LIMIT':
+        if (uppercaseType == 'LIMIT') or (uppercaseType == 'POST_ONLY'):
             request['price'] = self.price_to_precision(symbol, price)
             defaultExpireIn = self.safe_integer(self.options, 'expireIn')
             expireTime = self.safe_value(params, 'expireTime')
@@ -511,13 +881,13 @@ class timex(Exchange):
         #     }
         #
         orders = self.safe_value(response, 'orders', [])
-        order = self.safe_value(orders, 0, {})
+        order = self.safe_dict(orders, 0, {})
         return self.parse_order(order, market)
 
-    def edit_order(self, id, symbol, type, side, amount=None, price=None, params={}):
+    def edit_order(self, id: str, symbol: str, type: OrderType, side: OrderSide, amount: Num = None, price: Num = None, params={}):
         self.load_markets()
         market = self.market(symbol)
-        request = {
+        request: dict = {
             'id': id,
         }
         if amount is not None:
@@ -553,22 +923,43 @@ class timex(Exchange):
         if 'unchangedOrders' in response:
             orderIds = self.safe_value(response, 'unchangedOrders', [])
             orderId = self.safe_string(orderIds, 0)
-            return {
+            return self.safe_order({
                 'id': orderId,
                 'info': response,
-            }
+            })
         orders = self.safe_value(response, 'changedOrders', [])
         firstOrder = self.safe_value(orders, 0, {})
-        order = self.safe_value(firstOrder, 'newOrder', {})
+        order = self.safe_dict(firstOrder, 'newOrder', {})
         return self.parse_order(order, market)
 
-    def cancel_order(self, id, symbol=None, params={}):
-        self.load_markets()
-        return self.cancel_orders([id], symbol, params)
+    def cancel_order(self, id: str, symbol: Str = None, params={}):
+        """
+        cancels an open order
 
-    def cancel_orders(self, ids, symbol=None, params={}):
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Trading/deleteOrders
+
+        :param str id: order id
+        :param str symbol: not used by timex cancelOrder()
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: An `order structure <https://docs.ccxt.com/#/?id=order-structure>`
+        """
         self.load_markets()
-        request = {
+        orders = self.cancel_orders([id], symbol, params)
+        return self.safe_dict(orders, 0)
+
+    def cancel_orders(self, ids, symbol: Str = None, params={}):
+        """
+        cancel multiple orders
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Trading/deleteOrders
+
+        :param str[] ids: order ids
+        :param str symbol: unified market symbol, default is None
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: an list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
+        """
+        self.load_markets()
+        request: dict = {
             'id': ids,
         }
         response = self.tradingDeleteOrders(self.extend(request, params))
@@ -596,11 +987,34 @@ class timex(Exchange):
         #         ],
         #         "unchangedOrders": ["string"],
         #     }
-        return response
+        #
+        changedOrders = self.safe_list(response, 'changedOrders', [])
+        unchangedOrders = self.safe_list(response, 'unchangedOrders', [])
+        orders = []
+        for i in range(0, len(changedOrders)):
+            newOrder = self.safe_dict(changedOrders[i], 'newOrder')
+            orders.append(self.parse_order(newOrder))
+        for i in range(0, len(unchangedOrders)):
+            orders.append(self.safe_order({
+                'info': unchangedOrders[i],
+                'id': unchangedOrders[i],
+                'status': 'unchanged',
+            }))
+        return orders
 
-    def fetch_order(self, id, symbol=None, params={}):
+    def fetch_order(self, id: str, symbol: Str = None, params={}):
+        """
+        fetches information on an order made by the user
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/History/getOrderDetails
+
+        :param str id: order id
+        :param str symbol: not used by timex fetchOrder
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: An `order structure <https://docs.ccxt.com/#/?id=order-structure>`
+        """
         self.load_markets()
-        request = {
+        request: dict = {
             'orderHash': id,
         }
         response = self.historyGetOrdersDetails(request)
@@ -638,21 +1052,32 @@ class timex(Exchange):
         #     }
         #
         order = self.safe_value(response, 'order', {})
-        trades = self.safe_value(response, 'trades', [])
+        trades = self.safe_list(response, 'trades', [])
         return self.parse_order(self.extend(order, {'trades': trades}))
 
-    def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
+    def fetch_open_orders(self, symbol: Str = None, since: Int = None, limit: Int = None, params={}) -> List[Order]:
+        """
+        fetch all unfilled currently open orders
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Trading/getOpenOrders
+
+        :param str symbol: unified market symbol
+        :param int [since]: the earliest time in ms to fetch open orders for
+        :param int [limit]: the maximum number of  open orders structures to retrieve
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns Order[]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
+        """
         self.load_markets()
         options = self.safe_value(self.options, 'fetchOpenOrders', {})
         defaultSort = self.safe_value(options, 'sort', 'createdAt,asc')
         sort = self.safe_string(params, 'sort', defaultSort)
         query = self.omit(params, 'sort')
-        request = {
+        request: dict = {
             # 'clientOrderId': '123',  # order’s client id list for filter
             # page: 0,  # results page you want to retrieve(0 .. N)
             'sort': sort,  # sorting criteria in the format "property,asc" or "property,desc", default order is ascending, multiple sort criteria are supported
         }
-        market = None
+        market: Market = None
         if symbol is not None:
             market = self.market(symbol)
             request['symbol'] = market['id']
@@ -680,23 +1105,34 @@ class timex(Exchange):
         #         ]
         #     }
         #
-        orders = self.safe_value(response, 'orders', [])
+        orders = self.safe_list(response, 'orders', [])
         return self.parse_orders(orders, market, since, limit)
 
-    def fetch_closed_orders(self, symbol=None, since=None, limit=None, params={}):
+    def fetch_closed_orders(self, symbol: Str = None, since: Int = None, limit: Int = None, params={}) -> List[Order]:
+        """
+        fetches information on multiple closed orders made by the user
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/History/getOrders
+
+        :param str symbol: unified market symbol of the market orders were made in
+        :param int [since]: the earliest time in ms to fetch orders for
+        :param int [limit]: the maximum number of order structures to retrieve
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns Order[]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
+        """
         self.load_markets()
         options = self.safe_value(self.options, 'fetchClosedOrders', {})
         defaultSort = self.safe_value(options, 'sort', 'createdAt,asc')
         sort = self.safe_string(params, 'sort', defaultSort)
         query = self.omit(params, 'sort')
-        request = {
+        request: dict = {
             # 'clientOrderId': '123',  # order’s client id list for filter
             # page: 0,  # results page you want to retrieve(0 .. N)
             'sort': sort,  # sorting criteria in the format "property,asc" or "property,desc", default order is ascending, multiple sort criteria are supported
             'side': 'BUY',  # or 'SELL'
             # 'till': self.iso8601(self.milliseconds()),
         }
-        market = None
+        market: Market = None
         if symbol is not None:
             market = self.market(symbol)
             request['symbol'] = market['id']
@@ -726,16 +1162,27 @@ class timex(Exchange):
         #         ]
         #     }
         #
-        orders = self.safe_value(response, 'orders', [])
+        orders = self.safe_list(response, 'orders', [])
         return self.parse_orders(orders, market, since, limit)
 
-    def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
+    def fetch_my_trades(self, symbol: Str = None, since: Int = None, limit: Int = None, params={}):
+        """
+        fetch all trades made by the user
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/History/getTrades_1
+
+        :param str symbol: unified market symbol
+        :param int [since]: the earliest time in ms to fetch trades for
+        :param int [limit]: the maximum number of trades structures to retrieve
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns Trade[]: a list of `trade structures <https://docs.ccxt.com/#/?id=trade-structure>`
+        """
         self.load_markets()
         options = self.safe_value(self.options, 'fetchMyTrades', {})
         defaultSort = self.safe_value(options, 'sort', 'timestamp,asc')
         sort = self.safe_string(params, 'sort', defaultSort)
         query = self.omit(params, 'sort')
-        request = {
+        request: dict = {
             # 'cursorId': 123,  # int64(?)
             # 'from': self.iso8601(since),
             # 'makerOrderId': '1234',  # maker order hash
@@ -748,7 +1195,7 @@ class timex(Exchange):
             # 'takerOrderId': '1234',
             # 'till': self.iso8601(self.milliseconds()),
         }
-        market = None
+        market: Market = None
         if symbol is not None:
             market = self.market(symbol)
             request['symbol'] = market['id']
@@ -775,13 +1222,40 @@ class timex(Exchange):
         #         ]
         #     }
         #
-        trades = self.safe_value(response, 'trades', [])
+        trades = self.safe_list(response, 'trades', [])
         return self.parse_trades(trades, market, since, limit)
 
-    def fetch_trading_fee(self, symbol, params={}):
+    def parse_trading_fee(self, fee: dict, market: Market = None) -> TradingFeeInterface:
+        #
+        #     {
+        #         "fee": 0.0075,
+        #         "market": "ETHBTC"
+        #     }
+        #
+        marketId = self.safe_string(fee, 'market')
+        rate = self.safe_number(fee, 'fee')
+        return {
+            'info': fee,
+            'symbol': self.safe_symbol(marketId, market),
+            'maker': rate,
+            'taker': rate,
+            'percentage': None,
+            'tierBased': None,
+        }
+
+    def fetch_trading_fee(self, symbol: str, params={}) -> TradingFeeInterface:
+        """
+        fetch the trading fees for a market
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Trading/getFees
+
+        :param str symbol: unified market symbol
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: a `fee structure <https://docs.ccxt.com/#/?id=fee-structure>`
+        """
         self.load_markets()
         market = self.market(symbol)
-        request = {
+        request: dict = {
             'markets': market['id'],
         }
         response = self.tradingGetFees(self.extend(request, params))
@@ -794,13 +1268,9 @@ class timex(Exchange):
         #     ]
         #
         result = self.safe_value(response, 0, {})
-        return {
-            'info': response,
-            'maker': self.safe_number(result, 'fee'),
-            'taker': None,
-        }
+        return self.parse_trading_fee(result, market)
 
-    def parse_market(self, market):
+    def parse_market(self, market: dict) -> Market:
         #
         #     {
         #         "symbol": "ETHBTC",
@@ -821,47 +1291,69 @@ class timex(Exchange):
         #     }
         #
         locked = self.safe_value(market, 'locked')
-        active = not locked
         id = self.safe_string(market, 'symbol')
         baseId = self.safe_string(market, 'baseCurrency')
         quoteId = self.safe_string(market, 'quoteCurrency')
         base = self.safe_currency_code(baseId)
         quote = self.safe_currency_code(quoteId)
-        symbol = base + '/' + quote
-        precision = {
-            'amount': self.precision_from_string(self.safe_string(market, 'quantityIncrement')),
-            'price': self.precision_from_string(self.safe_string(market, 'tickSize')),
-        }
-        amountIncrement = self.safe_number(market, 'quantityIncrement')
-        minBase = self.safe_number(market, 'baseMinSize')
-        minAmount = max(amountIncrement, minBase)
-        priceIncrement = self.safe_number(market, 'tickSize')
+        amountIncrement = self.safe_string(market, 'quantityIncrement')
+        minBase = self.safe_string(market, 'baseMinSize')
+        minAmount = Precise.string_max(amountIncrement, minBase)
+        priceIncrement = self.safe_string(market, 'tickSize')
         minCost = self.safe_number(market, 'quoteMinSize')
-        limits = {
-            'amount': {'min': minAmount, 'max': None},
-            'price': {'min': priceIncrement, 'max': None},
-            'cost': {'min': max(minCost, minAmount * priceIncrement), 'max': None},
-        }
-        taker = self.safe_number(market, 'takerFee')
-        maker = self.safe_number(market, 'makerFee')
         return {
             'id': id,
-            'symbol': symbol,
+            'symbol': base + '/' + quote,
             'base': base,
             'quote': quote,
+            'settle': None,
             'baseId': baseId,
             'quoteId': quoteId,
+            'settleId': None,
             'type': 'spot',
             'spot': True,
-            'active': active,
-            'precision': precision,
-            'limits': limits,
-            'taker': taker,
-            'maker': maker,
+            'margin': False,
+            'swap': False,
+            'future': False,
+            'option': False,
+            'active': not locked,
+            'contract': False,
+            'linear': None,
+            'inverse': None,
+            'taker': self.safe_number(market, 'takerFee'),
+            'maker': self.safe_number(market, 'makerFee'),
+            'contractSize': None,
+            'expiry': None,
+            'expiryDatetime': None,
+            'strike': None,
+            'optionType': None,
+            'precision': {
+                'amount': self.safe_number(market, 'quantityIncrement'),
+                'price': self.safe_number(market, 'tickSize'),
+            },
+            'limits': {
+                'leverage': {
+                    'min': None,
+                    'max': None,
+                },
+                'amount': {
+                    'min': self.parse_number(minAmount),
+                    'max': None,
+                },
+                'price': {
+                    'min': self.parse_number(priceIncrement),
+                    'max': None,
+                },
+                'cost': {
+                    'min': minCost,
+                    'max': None,
+                },
+            },
+            'created': None,
             'info': market,
         }
 
-    def parse_currency(self, currency):
+    def parse_currency(self, currency: dict) -> Currency:
         #
         #     {
         #         "symbol": "BTC",
@@ -901,9 +1393,6 @@ class timex(Exchange):
         #
         id = self.safe_string(currency, 'symbol')
         code = self.safe_currency_code(id)
-        name = self.safe_string(currency, 'name')
-        precision = self.safe_integer(currency, 'decimals')
-        active = self.safe_value(currency, 'active')
         # fee = self.safe_number(currency, 'withdrawalFee')
         feeString = self.safe_string(currency, 'withdrawalFee')
         tradeDecimals = self.safe_integer(currency, 'tradeDecimals')
@@ -920,22 +1409,25 @@ class timex(Exchange):
                 for i in range(0, -dotIndex):
                     fraction += '0'
                 fee = self.parse_number(fraction + feeString)
-        return {
+        return self.safe_currency_structure({
             'id': code,
             'code': code,
             'info': currency,
             'type': None,
-            'name': name,
-            'active': active,
+            'name': self.safe_string(currency, 'name'),
+            'active': self.safe_bool(currency, 'active'),
+            'deposit': self.safe_bool(currency, 'depositEnabled'),
+            'withdraw': self.safe_bool(currency, 'withdrawalEnabled'),
             'fee': fee,
-            'precision': precision,
+            'precision': self.parse_number(self.parse_precision(self.safe_string(currency, 'decimals'))),
             'limits': {
-                'withdraw': {'min': fee, 'max': None},
+                'withdraw': {'min': None, 'max': None},
                 'amount': {'min': None, 'max': None},
             },
-        }
+            'networks': {},
+        })
 
-    def parse_ticker(self, ticker, market=None):
+    def parse_ticker(self, ticker: dict, market: Market = None) -> Ticker:
         #
         #     {
         #         "ask": 0.017,
@@ -954,18 +1446,18 @@ class timex(Exchange):
         marketId = self.safe_string(ticker, 'market')
         symbol = self.safe_symbol(marketId, market, '/')
         timestamp = self.parse8601(self.safe_string(ticker, 'timestamp'))
-        last = self.safe_number(ticker, 'last')
-        open = self.safe_number(ticker, 'open')
+        last = self.safe_string(ticker, 'last')
+        open = self.safe_string(ticker, 'open')
         return self.safe_ticker({
             'symbol': symbol,
             'info': ticker,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_number(ticker, 'high'),
-            'low': self.safe_number(ticker, 'low'),
-            'bid': self.safe_number(ticker, 'bid'),
+            'high': self.safe_string(ticker, 'high'),
+            'low': self.safe_string(ticker, 'low'),
+            'bid': self.safe_string(ticker, 'bid'),
             'bidVolume': None,
-            'ask': self.safe_number(ticker, 'ask'),
+            'ask': self.safe_string(ticker, 'ask'),
             'askVolume': None,
             'vwap': None,
             'open': open,
@@ -975,11 +1467,11 @@ class timex(Exchange):
             'change': None,
             'percentage': None,
             'average': None,
-            'baseVolume': self.safe_number(ticker, 'volume'),
-            'quoteVolume': self.safe_number(ticker, 'volumeQuote'),
+            'baseVolume': self.safe_string(ticker, 'volume'),
+            'quoteVolume': self.safe_string(ticker, 'volumeQuote'),
         }, market)
 
-    def parse_trade(self, trade, market=None):
+    def parse_trade(self, trade: dict, market: Market = None) -> Trade:
         #
         # fetchTrades(public)
         #
@@ -1018,7 +1510,7 @@ class timex(Exchange):
         id = self.safe_string(trade, 'id')
         side = self.safe_string_lower_2(trade, 'direction', 'side')
         takerOrMaker = self.safe_string_lower(trade, 'makerOrTaker')
-        orderId = None
+        orderId: Str = None
         if takerOrMaker is not None:
             orderId = self.safe_string(trade, takerOrMaker + 'OrderId')
         fee = None
@@ -1029,7 +1521,7 @@ class timex(Exchange):
                 'cost': feeCost,
                 'currency': feeCurrency,
             }
-        return {
+        return self.safe_trade({
             'info': trade,
             'id': id,
             'timestamp': timestamp,
@@ -1043,9 +1535,9 @@ class timex(Exchange):
             'cost': cost,
             'takerOrMaker': takerOrMaker,
             'fee': fee,
-        }
+        })
 
-    def parse_ohlcv(self, ohlcv, market=None):
+    def parse_ohlcv(self, ohlcv, market: Market = None) -> list:
         #
         #     {
         #         "timestamp":"2019-12-04T23:00:00",
@@ -1066,7 +1558,7 @@ class timex(Exchange):
             self.safe_number(ohlcv, 'volume'),
         ]
 
-    def parse_order(self, order, market=None):
+    def parse_order(self, order: dict, market: Market = None) -> Order:
         #
         # fetchOrder, createOrder, cancelOrder, cancelOrders, fetchOpenOrders, fetchClosedOrders
         #
@@ -1093,23 +1585,18 @@ class timex(Exchange):
         marketId = self.safe_string(order, 'symbol')
         symbol = self.safe_symbol(marketId, market)
         timestamp = self.parse8601(self.safe_string(order, 'createdAt'))
-        price = self.safe_number(order, 'price')
-        amount = self.safe_number(order, 'quantity')
-        filled = self.safe_number(order, 'filledQuantity')
-        canceledQuantity = self.safe_number(order, 'cancelledQuantity')
-        status = None
-        if (amount is not None) and (filled is not None):
-            if filled >= amount:
-                status = 'closed'
-            elif (canceledQuantity is not None) and (canceledQuantity > 0):
-                status = 'canceled'
-            else:
-                status = 'open'
+        price = self.safe_string(order, 'price')
+        amount = self.safe_string(order, 'quantity')
+        filled = self.safe_string(order, 'filledQuantity')
+        canceledQuantity = self.omit_zero(self.safe_string(order, 'cancelledQuantity'))
+        status: str
+        if Precise.string_equals(filled, amount):
+            status = 'closed'
+        elif canceledQuantity is not None:
+            status = 'canceled'
+        else:
+            status = 'open'
         rawTrades = self.safe_value(order, 'trades', [])
-        trades = self.parse_trades(rawTrades, market, None, None, {
-            'order': id,
-            'type': type,
-        })
         clientOrderId = self.safe_string(order, 'clientOrderId')
         return self.safe_order({
             'info': order,
@@ -1124,7 +1611,7 @@ class timex(Exchange):
             'postOnly': None,
             'side': side,
             'price': price,
-            'stopPrice': None,
+            'triggerPrice': None,
             'amount': amount,
             'cost': None,
             'average': None,
@@ -1132,23 +1619,86 @@ class timex(Exchange):
             'remaining': None,
             'status': status,
             'fee': None,
-            'trades': trades,
-        })
+            'trades': rawTrades,
+        }, market)
+
+    def fetch_deposit_address(self, code: str, params={}) -> DepositAddress:
+        """
+        fetch the deposit address for a currency associated with self account, does not accept params["network"]
+
+        https://plasma-relay-backend.timex.io/swagger-ui/index.html?urls.primaryName=Relay#/Currency/selectCurrencyBySymbol
+
+        :param str code: unified currency code
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: an `address structure <https://docs.ccxt.com/#/?id=address-structure>`
+        """
+        self.load_markets()
+        currency = self.currency(code)
+        request: dict = {
+            'symbol': currency['code'],
+        }
+        response = self.currenciesGetSSymbol(self.extend(request, params))
+        #
+        #    {
+        #        id: '1',
+        #        currency: {
+        #            symbol: 'BTC',
+        #            name: 'Bitcoin',
+        #            address: '0x8370fbc6ddec1e18b4e41e72ed943e238458487c',
+        #            decimals: '8',
+        #            tradeDecimals: '20',
+        #            fiatSymbol: 'BTC',
+        #            depositEnabled: True,
+        #            withdrawalEnabled: True,
+        #            transferEnabled: True,
+        #            active: True
+        #        }
+        #    }
+        #
+        data = self.safe_dict(response, 'currency', {})
+        return self.parse_deposit_address(data, currency)
+
+    def parse_deposit_address(self, depositAddress, currency: Currency = None) -> DepositAddress:
+        #
+        #    {
+        #        symbol: 'BTC',
+        #        name: 'Bitcoin',
+        #        address: '0x8370fbc6ddec1e18b4e41e72ed943e238458487c',
+        #        decimals: '8',
+        #        tradeDecimals: '20',
+        #        fiatSymbol: 'BTC',
+        #        depositEnabled: True,
+        #        withdrawalEnabled: True,
+        #        transferEnabled: True,
+        #        active: True
+        #    }
+        #
+        currencyId = self.safe_string(depositAddress, 'symbol')
+        return {
+            'info': depositAddress,
+            'currency': self.safe_currency_code(currencyId, currency),
+            'network': None,
+            'address': self.safe_string(depositAddress, 'address'),
+            'tag': None,
+        }
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        url = self.urls['api'] + '/' + api + '/' + path
+        paramsToExtract = self.extract_params(path)
+        path = self.implode_params(path, params)
+        params = self.omit(params, paramsToExtract)
+        url = self.urls['api']['rest'] + '/' + api + '/' + path
         if params:
             url += '?' + self.urlencode_with_array_repeat(params)
-        if api != 'public':
+        if api != 'public' and api != 'tradingview':
             self.check_required_credentials()
             auth = self.string_to_base64(self.apiKey + ':' + self.secret)
-            secret = 'Basic ' + self.decode(auth)
+            secret = 'Basic ' + auth
             headers = {'authorization': secret}
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
-    def handle_errors(self, statusCode, statusText, url, method, responseHeaders, responseBody, response, requestHeaders, requestBody):
+    def handle_errors(self, statusCode: int, statusText: str, url: str, method: str, responseHeaders: dict, responseBody, response, requestHeaders, requestBody):
         if response is None:
-            return
+            return None
         if statusCode >= 400:
             #
             #     {"error":{"timestamp":"05.12.2019T05:25:43.584+0000","status":"BAD_REQUEST","message":"Insufficient ETH balance. Required: 1, actual: 0.","code":4001}}
@@ -1164,3 +1714,4 @@ class timex(Exchange):
             self.throw_exactly_matched_exception(self.exceptions['exact'], code, feedback)
             self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
             raise ExchangeError(feedback)
+        return None

@@ -4,22 +4,29 @@
 # https://github.com/ccxt/ccxt/blob/master/CONTRIBUTING.md#how-to-contribute-code
 
 from ccxt.async_support.base.exchange import Exchange
+from ccxt.abstract.latoken import ImplicitAPI
 import hashlib
+from ccxt.base.types import Any, Balances, Currencies, Currency, Int, Market, Num, Order, OrderBook, OrderSide, OrderType, Str, Strings, Ticker, Tickers, Trade, TradingFeeInterface, Transaction, TransferEntry
+from typing import List
 from ccxt.base.errors import ExchangeError
 from ccxt.base.errors import AuthenticationError
 from ccxt.base.errors import PermissionDenied
 from ccxt.base.errors import AccountSuspended
 from ccxt.base.errors import ArgumentsRequired
 from ccxt.base.errors import BadRequest
+from ccxt.base.errors import BadSymbol
+from ccxt.base.errors import InsufficientFunds
+from ccxt.base.errors import InvalidOrder
+from ccxt.base.errors import NotSupported
 from ccxt.base.errors import RateLimitExceeded
 from ccxt.base.errors import ExchangeNotAvailable
 from ccxt.base.errors import InvalidNonce
 from ccxt.base.decimal_to_precision import TICK_SIZE
 
 
-class latoken(Exchange):
+class latoken(Exchange, ImplicitAPI):
 
-    def describe(self):
+    def describe(self) -> Any:
         return self.deep_extend(super(latoken, self).describe(), {
             'id': 'latoken',
             'name': 'Latoken',
@@ -27,25 +34,70 @@ class latoken(Exchange):
             'version': 'v2',
             'rateLimit': 1000,
             'has': {
+                'CORS': None,
+                'spot': True,
+                'margin': False,
+                'swap': False,
+                'future': False,
+                'option': False,
                 'cancelAllOrders': True,
-                'cancelOrder': None,
-                'createOrder': None,
+                'cancelOrder': True,
+                'closeAllPositions': False,
+                'closePosition': False,
+                'createOrder': True,
+                'createPostOnlyOrder': False,
+                'createStopLimitOrder': True,
+                'createStopMarketOrder': False,
+                'createStopOrder': True,
                 'fetchBalance': True,
+                'fetchBorrowRateHistories': False,
+                'fetchBorrowRateHistory': False,
+                'fetchCrossBorrowRate': False,
+                'fetchCrossBorrowRates': False,
                 'fetchCurrencies': True,
+                'fetchDepositAddress': False,
+                'fetchDepositAddresses': False,
+                'fetchDepositAddressesByNetwork': False,
+                'fetchDepositsWithdrawals': True,
+                'fetchDepositWithdrawFees': False,
+                'fetchFundingHistory': False,
+                'fetchFundingInterval': False,
+                'fetchFundingIntervals': False,
+                'fetchFundingRate': False,
+                'fetchFundingRateHistory': False,
+                'fetchFundingRates': False,
+                'fetchIsolatedBorrowRate': False,
+                'fetchIsolatedBorrowRates': False,
+                'fetchMarginMode': False,
                 'fetchMarkets': True,
                 'fetchMyTrades': True,
                 'fetchOpenOrders': True,
-                'fetchOrderBook': True,
                 'fetchOrder': True,
+                'fetchOrderBook': True,
                 'fetchOrders': True,
+                'fetchPosition': False,
+                'fetchPositionHistory': False,
+                'fetchPositionMode': False,
+                'fetchPositions': False,
+                'fetchPositionsForSymbol': False,
+                'fetchPositionsHistory': False,
+                'fetchPositionsRisk': False,
                 'fetchTicker': True,
                 'fetchTickers': True,
+                'fetchTime': True,
                 'fetchTrades': True,
-                'fetchTransactions': True,
+                'fetchTradingFee': True,
+                'fetchTradingFees': False,
+                'fetchTransactions': 'emulated',
+                'fetchTransfer': False,
+                'fetchTransfers': True,
+                'transfer': True,
             },
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/1294454/61511972-24c39f00-aa01-11e9-9f7c-471f1d6e5214.jpg',
-                'api': 'https://api.latoken.com',
+                'api': {
+                    'rest': 'https://api.latoken.com',
+                },
                 'www': 'https://latoken.com',
                 'doc': [
                     'https://api.latoken.com',
@@ -128,9 +180,22 @@ class latoken(Exchange):
                 },
             },
             'commonCurrencies': {
+                'BUX': 'Buxcoin',
+                'CBT': 'Community Business Token',
+                'CTC': 'CyberTronchain',
+                'DMD': 'Diamond Coin',
+                'FREN': 'Frenchie',
+                'GDX': 'GoldenX',
+                'GEC': 'Geco One',
+                'GEM': 'NFTmall',
+                'GMT': 'GMT Token',
+                'IMC': 'IMCoin',
                 'MT': 'Monarch',
                 'TPAY': 'Tetra Pay',
+                'TRADE': 'Smart Trade Coin',
                 'TSL': 'Treasure SL',
+                'UNO': 'Unobtanium',
+                'WAR': 'Warrior Token',
             },
             'exceptions': {
                 'exact': {
@@ -153,22 +218,102 @@ class latoken(Exchange):
                     'INSUFFICIENT_AUTHENTICATION': AuthenticationError,  # for example, 2FA required.
                     'UNKNOWN_LOCATION': AuthenticationError,  # user logged from unusual location, email confirmation required.
                     'TOO_MANY_REQUESTS': RateLimitExceeded,  # too many requests at the time. A response header X-Rate-Limit-Remaining indicates the number of allowed request per a period.
+                    'INSUFFICIENT_FUNDS': InsufficientFunds,  # {"message":"not enough balance on the spot account for currency(USDT), need(20.000)","error":"INSUFFICIENT_FUNDS","status":"FAILURE"}
+                    'ORDER_VALIDATION': InvalidOrder,  # {"message":"Quantity(0) is not positive","error":"ORDER_VALIDATION","status":"FAILURE"}
+                    'BAD_TICKS': InvalidOrder,  # {"status":"FAILURE","message":"Quantity(1.4) does not match quantity tick(10)","error":"BAD_TICKS","errors":null,"result":false}
                 },
                 'broad': {
                     'invalid API key, signature or digest': AuthenticationError,  # {"result":false,"message":"invalid API key, signature or digest","error":"BAD_REQUEST","status":"FAILURE"}
+                    'The API key was revoked': AuthenticationError,  # {"result":false,"message":"The API key was revoked","error":"BAD_REQUEST","status":"FAILURE"}
                     'request expired or bad': InvalidNonce,  # {"result":false,"message":"request expired or bad <timeAlive>/<timestamp> format","error":"BAD_REQUEST","status":"FAILURE"}
                     'For input string': BadRequest,  # {"result":false,"message":"Internal error","error":"For input string: \"NaN\"","status":"FAILURE"}
+                    'Unable to resolve currency by tag': BadSymbol,  # {"message":"Unable to resolve currency by tag(None)","error":"NOT_FOUND","status":"FAILURE"}
+                    "Can't find currency with tag": BadSymbol,  # {"status":"FAILURE","message":"Can't find currency with tag = None","error":"NOT_FOUND","errors":null,"result":false}
+                    'Unable to place order because pair is in inactive state': BadSymbol,  # {"message":"Unable to place order because pair is in inactive state(PAIR_STATUS_INACTIVE)","error":"ORDER_VALIDATION","status":"FAILURE"}
+                    'API keys are not available for': AccountSuspended,  # {"result":false,"message":"API keys are not available for FROZEN user","error":"BAD_REQUEST","status":"FAILURE"}
                 },
             },
             'options': {
                 'defaultType': 'spot',
                 'types': {
                     'wallet': 'ACCOUNT_TYPE_WALLET',
+                    'funding': 'ACCOUNT_TYPE_WALLET',
                     'spot': 'ACCOUNT_TYPE_SPOT',
                 },
                 'accounts': {
                     'ACCOUNT_TYPE_WALLET': 'wallet',
                     'ACCOUNT_TYPE_SPOT': 'spot',
+                },
+                'fetchTradingFee': {
+                    'method': 'fetchPrivateTradingFee',  # or 'fetchPublicTradingFee'
+                },
+            },
+            'features': {
+                'spot': {
+                    'sandbox': False,
+                    'createOrder': {
+                        'marginMode': False,
+                        'triggerPrice': True,
+                        'triggerPriceType': None,
+                        'triggerDirection': False,
+                        'stopLossPrice': False,  # todo
+                        'takeProfitPrice': False,  # todo
+                        'attachedStopLossTakeProfit': None,
+                        'timeInForce': {
+                            'IOC': True,  # todo: for non-trigger orders
+                            'FOK': True,
+                            'PO': False,
+                            'GTD': False,
+                        },
+                        'hedged': False,
+                        'selfTradePrevention': False,
+                        'trailing': False,
+                        'leverage': False,
+                        'marketBuyByCost': True,
+                        'marketBuyRequiresPrice': False,
+                        'iceberg': False,
+                    },
+                    'createOrders': None,
+                    'fetchMyTrades': {
+                        'marginMode': False,
+                        'limit': 1000,
+                        'daysBack': 100000,  # todo
+                        'untilDays': None,
+                        'symbolRequired': False,
+                    },
+                    'fetchOrder': {
+                        'marginMode': False,
+                        'trigger': True,
+                        'trailing': False,
+                        'symbolRequired': False,
+                    },
+                    'fetchOpenOrders': {
+                        'marginMode': False,
+                        'limit': None,
+                        'trigger': False,
+                        'trailing': False,
+                        'symbolRequired': True,
+                    },
+                    'fetchOrders': None,
+                    'fetchClosedOrders': {
+                        'marginMode': False,
+                        'limit': 1000,
+                        'daysBack': 100000,  # todo
+                        'daysBackCanceled': 1,
+                        'untilDays': None,
+                        'trigger': True,
+                        'trailing': False,
+                        'symbolRequired': False,
+                    },
+                    'fetchOHLCV': None,
+                },
+                'swap': {
+                    'linear': None,
+                    'inverse': None,
+                },
+                'future': {
+                    'linear': None,
+                    'inverse': None,
                 },
             },
         })
@@ -176,7 +321,15 @@ class latoken(Exchange):
     def nonce(self):
         return self.milliseconds() - self.options['timeDifference']
 
-    async def fetch_time(self, params={}):
+    async def fetch_time(self, params={}) -> Int:
+        """
+        fetches the current integer timestamp in milliseconds from the exchange server
+
+        https://api.latoken.com/doc/v2/#tag/Time/operation/currentTime
+
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns int: the current integer timestamp in milliseconds from the exchange server
+        """
         response = await self.publicGetTime(params)
         #
         #     {
@@ -185,13 +338,15 @@ class latoken(Exchange):
         #
         return self.safe_integer(response, 'serverTime')
 
-    async def load_time_difference(self, params={}):
-        serverTime = await self.fetch_time(params)
-        after = self.milliseconds()
-        self.options['timeDifference'] = after - serverTime
-        return self.options['timeDifference']
+    async def fetch_markets(self, params={}) -> List[Market]:
+        """
+        retrieves data on all markets for latoken
 
-    async def fetch_markets(self, params={}):
+        https://api.latoken.com/doc/v2/#tag/Pair/operation/getActivePairs
+
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict[]: an array of objects representing market data
+        """
         currencies = await self.fetch_currencies_from_cache(params)
         #
         #     [
@@ -261,42 +416,57 @@ class latoken(Exchange):
             if baseCurrency is not None and quoteCurrency is not None:
                 base = self.safe_currency_code(self.safe_string(baseCurrency, 'tag'))
                 quote = self.safe_currency_code(self.safe_string(quoteCurrency, 'tag'))
-                symbol = base + '/' + quote
-                precision = {
-                    'price': self.safe_number(market, 'priceTick'),
-                    'amount': self.safe_number(market, 'quantityTick'),
-                }
                 lowercaseQuote = quote.lower()
                 capitalizedQuote = self.capitalize(lowercaseQuote)
-                limits = {
-                    'amount': {
-                        'min': self.safe_number(market, 'minOrderQuantity'),
-                        'max': None,
-                    },
-                    'price': {
-                        'min': None,
-                        'max': None,
-                    },
-                    'cost': {
-                        'min': self.safe_number(market, 'minOrderCost' + capitalizedQuote),
-                        'max': self.safe_number(market, 'maxOrderCost' + capitalizedQuote),
-                    },
-                }
                 status = self.safe_string(market, 'status')
-                active = (status == 'PAIR_STATUS_ACTIVE')
                 result.append({
                     'id': id,
-                    'info': market,
-                    'symbol': symbol,
+                    'symbol': base + '/' + quote,
                     'base': base,
                     'quote': quote,
+                    'settle': None,
                     'baseId': baseId,
                     'quoteId': quoteId,
+                    'settleId': None,
                     'type': 'spot',
                     'spot': True,
-                    'active': active,  # assuming True
-                    'precision': precision,
-                    'limits': limits,
+                    'margin': False,
+                    'swap': False,
+                    'future': False,
+                    'option': False,
+                    'active': (status == 'PAIR_STATUS_ACTIVE'),  # assuming True
+                    'contract': False,
+                    'linear': None,
+                    'inverse': None,
+                    'contractSize': None,
+                    'expiry': None,
+                    'expiryDatetime': None,
+                    'strike': None,
+                    'optionType': None,
+                    'precision': {
+                        'amount': self.safe_number(market, 'quantityTick'),
+                        'price': self.safe_number(market, 'priceTick'),
+                    },
+                    'limits': {
+                        'leverage': {
+                            'min': None,
+                            'max': None,
+                        },
+                        'amount': {
+                            'min': self.safe_number(market, 'minOrderQuantity'),
+                            'max': None,
+                        },
+                        'price': {
+                            'min': None,
+                            'max': None,
+                        },
+                        'cost': {
+                            'min': self.safe_number(market, 'minOrderCost' + capitalizedQuote),
+                            'max': self.safe_number(market, 'maxOrderCost' + capitalizedQuote),
+                        },
+                    },
+                    'created': self.safe_integer(market, 'created'),
+                    'info': market,
                 })
         return result
 
@@ -315,7 +485,12 @@ class latoken(Exchange):
             })
         return self.safe_value(self.options['fetchCurrencies'], 'response')
 
-    async def fetch_currencies(self, params={}):
+    async def fetch_currencies(self, params={}) -> Currencies:
+        """
+        fetches all available currencies on an exchange
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: an associative dictionary of currencies
+        """
         response = await self.fetch_currencies_from_cache(params)
         #
         #     [
@@ -349,20 +524,20 @@ class latoken(Exchange):
         #         },
         #     ]
         #
-        result = {}
+        result: dict = {}
         for i in range(0, len(response)):
             currency = response[i]
             id = self.safe_string(currency, 'id')
             tag = self.safe_string(currency, 'tag')
             code = self.safe_currency_code(tag)
-            decimals = self.safe_string(currency, 'decimals')
-            precision = self.parse_number('1e-' + decimals)
             fee = self.safe_number(currency, 'fee')
             currencyType = self.safe_string(currency, 'type')
-            parts = currencyType.split('_')
-            numParts = len(parts)
-            lastPart = self.safe_value(parts, numParts - 1)
-            type = lastPart.lower()
+            type = None
+            if currencyType == 'CURRENCY_TYPE_ALTERNATIVE':
+                type = 'other'
+            else:
+                # CURRENCY_TYPE_CRYPTO and CURRENCY_TYPE_IEO are all cryptos
+                type = 'crypto'
             status = self.safe_string(currency, 'status')
             active = (status == 'CURRENCY_STATUS_ACTIVE')
             name = self.safe_string(currency, 'name')
@@ -373,8 +548,10 @@ class latoken(Exchange):
                 'name': name,
                 'type': type,
                 'active': active,
+                'deposit': None,
+                'withdraw': None,
                 'fee': fee,
-                'precision': precision,
+                'precision': self.parse_number(self.parse_precision(self.safe_string(currency, 'decimals'))),
                 'limits': {
                     'amount': {
                         'min': self.safe_number(currency, 'minTransferAmount'),
@@ -385,35 +562,44 @@ class latoken(Exchange):
                         'max': None,
                     },
                 },
+                'networks': {},
             }
         return result
 
-    async def fetch_balance(self, params={}):
+    async def fetch_balance(self, params={}) -> Balances:
+        """
+        query for balance and get the amount of funds available for trading or funds locked in orders
+
+        https://api.latoken.com/doc/v2/#tag/Account/operation/getBalancesByUser
+
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: a `balance structure <https://docs.ccxt.com/#/?id=balance-structure>`
+        """
         await self.load_markets()
         response = await self.privateGetAuthAccount(params)
         #
         #     [
         #         {
-        #             id: "e5852e02-8711-431c-9749-a6f5503c6dbe",
-        #             status: "ACCOUNT_STATUS_ACTIVE",
-        #             type: "ACCOUNT_TYPE_WALLET",
-        #             timestamp: "1635920106506",
-        #             currency: "0c3a106d-bde3-4c13-a26e-3fd2394529e5",
-        #             available: "100.000000",
-        #             blocked: "0.000000"
+        #             "id": "e5852e02-8711-431c-9749-a6f5503c6dbe",
+        #             "status": "ACCOUNT_STATUS_ACTIVE",
+        #             "type": "ACCOUNT_TYPE_WALLET",
+        #             "timestamp": "1635920106506",
+        #             "currency": "0c3a106d-bde3-4c13-a26e-3fd2394529e5",
+        #             "available": "100.000000",
+        #             "blocked": "0.000000"
         #         },
         #         {
-        #             id: "369df204-acbc-467e-a25e-b16e3cc09cf6",
-        #             status: "ACCOUNT_STATUS_ACTIVE",
-        #             type: "ACCOUNT_TYPE_SPOT",
-        #             timestamp: "1635920106504",
-        #             currency: "0c3a106d-bde3-4c13-a26e-3fd2394529e5",
-        #             available: "100.000000",
-        #             blocked: "0.000000"
+        #             "id": "369df204-acbc-467e-a25e-b16e3cc09cf6",
+        #             "status": "ACCOUNT_STATUS_ACTIVE",
+        #             "type": "ACCOUNT_TYPE_SPOT",
+        #             "timestamp": "1635920106504",
+        #             "currency": "0c3a106d-bde3-4c13-a26e-3fd2394529e5",
+        #             "available": "100.000000",
+        #             "blocked": "0.000000"
         #         }
         #     ]
         #
-        result = {
+        result: dict = {
             'info': response,
             'timestamp': None,
             'datetime': None,
@@ -441,12 +627,22 @@ class latoken(Exchange):
             result[code] = account
         result['timestamp'] = maxTimestamp
         result['datetime'] = self.iso8601(maxTimestamp)
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
-    async def fetch_order_book(self, symbol, limit=None, params={}):
+    async def fetch_order_book(self, symbol: str, limit: Int = None, params={}) -> OrderBook:
+        """
+        fetches information on open orders with bid(buy) and ask(sell) prices, volumes and other data
+
+        https://api.latoken.com/doc/v2/#tag/Order-Book/operation/getOrderBook
+
+        :param str symbol: unified symbol of the market to fetch the order book for
+        :param int [limit]: the maximum amount of order book entries to return
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: A dictionary of `order book structures <https://docs.ccxt.com/#/?id=order-book-structure>` indexed by market symbols
+        """
         await self.load_markets()
         market = self.market(symbol)
-        request = {
+        request: dict = {
             'currency': market['baseId'],
             'quote': market['quoteId'],
         }
@@ -471,89 +667,129 @@ class latoken(Exchange):
         #
         return self.parse_order_book(response, symbol, None, 'bid', 'ask', 'price', 'quantity')
 
-    def parse_ticker(self, ticker, market=None):
+    def parse_ticker(self, ticker: dict, market: Market = None) -> Ticker:
         #
-        #     {
-        #         "symbol":"620f2019-33c0-423b-8a9d-cde4d7f8ef7f/0c3a106d-bde3-4c13-a26e-3fd2394529e5",
-        #         "baseCurrency":"620f2019-33c0-423b-8a9d-cde4d7f8ef7f",
-        #         "quoteCurrency":"0c3a106d-bde3-4c13-a26e-3fd2394529e5",
-        #         "volume24h":"76411867.852585600000000000",
-        #         "volume7d":"637809926.759451100000000000",
-        #         "change24h":"2.5300",
-        #         "change7d":"5.1300",
-        #         "lastPrice":"4426.9"
-        #     }
+        #    {
+        #        "symbol": "92151d82-df98-4d88-9a4d-284fa9eca49f/0c3a106d-bde3-4c13-a26e-3fd2394529e5",
+        #        "baseCurrency": "92151d82-df98-4d88-9a4d-284fa9eca49f",
+        #        "quoteCurrency": "0c3a106d-bde3-4c13-a26e-3fd2394529e5",
+        #        "volume24h": "165723597.189022176000000000",
+        #        "volume7d": "934505768.625109571000000000",
+        #        "change24h": "0.0200",
+        #        "change7d": "-6.4200",
+        #        "amount24h": "6438.457663100000000000",
+        #        "amount7d": "35657.785013800000000000",
+        #        "lastPrice": "25779.16",
+        #        "lastQuantity": "0.248403300000000000",
+        #        "bestBid": "25778.74",
+        #        "bestBidQuantity": "0.6520232",
+        #        "bestAsk": "25779.17",
+        #        "bestAskQuantity": "0.4956043",
+        #        "updateTimestamp": "1693965231406"
+        #    }
         #
         marketId = self.safe_string(ticker, 'symbol')
-        symbol = self.safe_symbol(marketId, market)
-        last = self.safe_number(ticker, 'lastPrice')
-        change = self.safe_number(ticker, 'change24h')
-        timestamp = self.nonce()
+        last = self.safe_string(ticker, 'lastPrice')
+        timestamp = self.safe_integer_omit_zero(ticker, 'updateTimestamp')  # sometimes latoken provided '0' ts from /ticker endpoint
         return self.safe_ticker({
-            'symbol': symbol,
+            'symbol': self.safe_symbol(marketId, market),
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'low': self.safe_number(ticker, 'low'),
-            'high': self.safe_number(ticker, 'high'),
-            'bid': None,
-            'bidVolume': None,
-            'ask': None,
-            'askVolume': None,
+            'low': None,
+            'high': None,
+            'bid': self.safe_string(ticker, 'bestBid'),
+            'bidVolume': self.safe_string(ticker, 'bestBidQuantity'),
+            'ask': self.safe_string(ticker, 'bestAsk'),
+            'askVolume': self.safe_string(ticker, 'bestAskQuantity'),
             'vwap': None,
             'open': None,
             'close': last,
             'last': last,
             'previousClose': None,
-            'change': change,
-            'percentage': None,
+            'change': None,
+            'percentage': self.safe_string(ticker, 'change24h'),
             'average': None,
-            'baseVolume': None,
-            'quoteVolume': self.safe_number(ticker, 'volume24h'),
+            'baseVolume': self.safe_string(ticker, 'amount24h'),
+            'quoteVolume': self.safe_string(ticker, 'volume24h'),
             'info': ticker,
-        })
+        }, market)
 
-    async def fetch_ticker(self, symbol, params={}):
+    async def fetch_ticker(self, symbol: str, params={}) -> Ticker:
+        """
+        fetches a price ticker, a statistical calculation with the information calculated over the past 24 hours for a specific market
+
+        https://api.latoken.com/doc/v2/#tag/Ticker/operation/getTicker
+
+        :param str symbol: unified symbol of the market to fetch the ticker for
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: a `ticker structure <https://docs.ccxt.com/#/?id=ticker-structure>`
+        """
         await self.load_markets()
         market = self.market(symbol)
-        request = {
+        request: dict = {
             'base': market['baseId'],
             'quote': market['quoteId'],
         }
         response = await self.publicGetTickerBaseQuote(self.extend(request, params))
         #
-        #     {
-        #         "symbol":"620f2019-33c0-423b-8a9d-cde4d7f8ef7f/0c3a106d-bde3-4c13-a26e-3fd2394529e5",
-        #         "baseCurrency":"620f2019-33c0-423b-8a9d-cde4d7f8ef7f",
-        #         "quoteCurrency":"0c3a106d-bde3-4c13-a26e-3fd2394529e5",
-        #         "volume24h":"76411867.852585600000000000",
-        #         "volume7d":"637809926.759451100000000000",
-        #         "change24h":"2.5300",
-        #         "change7d":"5.1300",
-        #         "lastPrice":"4426.9"
-        #     }
+        #    {
+        #        "symbol": "92151d82-df98-4d88-9a4d-284fa9eca49f/0c3a106d-bde3-4c13-a26e-3fd2394529e5",
+        #        "baseCurrency": "92151d82-df98-4d88-9a4d-284fa9eca49f",
+        #        "quoteCurrency": "0c3a106d-bde3-4c13-a26e-3fd2394529e5",
+        #        "volume24h": "165723597.189022176000000000",
+        #        "volume7d": "934505768.625109571000000000",
+        #        "change24h": "0.0200",
+        #        "change7d": "-6.4200",
+        #        "amount24h": "6438.457663100000000000",
+        #        "amount7d": "35657.785013800000000000",
+        #        "lastPrice": "25779.16",
+        #        "lastQuantity": "0.248403300000000000",
+        #        "bestBid": "25778.74",
+        #        "bestBidQuantity": "0.6520232",
+        #        "bestAsk": "25779.17",
+        #        "bestAskQuantity": "0.4956043",
+        #        "updateTimestamp": "1693965231406"
+        #    }
         #
         return self.parse_ticker(response, market)
 
-    async def fetch_tickers(self, symbols=None, params={}):
+    async def fetch_tickers(self, symbols: Strings = None, params={}) -> Tickers:
+        """
+        fetches price tickers for multiple markets, statistical information calculated over the past 24 hours for each market
+
+        https://api.latoken.com/doc/v2/#tag/Ticker/operation/getAllTickers
+
+        :param str[]|None symbols: unified symbols of the markets to fetch the ticker for, all market tickers are returned if not assigned
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: a dictionary of `ticker structures <https://docs.ccxt.com/#/?id=ticker-structure>`
+        """
         await self.load_markets()
         response = await self.publicGetTicker(params)
         #
-        #     [
-        #         {
-        #             "symbol":"DASH/BTC",
-        #             "baseCurrency":"ed75c263-4ab9-494b-8426-031dab1c7cc1",
-        #             "quoteCurrency":"92151d82-df98-4d88-9a4d-284fa9eca49f",
-        #             "volume24h":"1.977753278000000000",
-        #             "volume7d":"18.964342670000000000",
-        #             "change24h":"-1.4800",
-        #             "change7d":"-5.5200",
-        #             "lastPrice":"0.003066"
-        #         },
-        #     ]
+        #    [
+        #        {
+        #            "symbol": "92151d82-df98-4d88-9a4d-284fa9eca49f/0c3a106d-bde3-4c13-a26e-3fd2394529e5",
+        #            "baseCurrency": "92151d82-df98-4d88-9a4d-284fa9eca49f",
+        #            "quoteCurrency": "0c3a106d-bde3-4c13-a26e-3fd2394529e5",
+        #            "volume24h": "165723597.189022176000000000",
+        #            "volume7d": "934505768.625109571000000000",
+        #            "change24h": "0.0200",
+        #            "change7d": "-6.4200",
+        #            "amount24h": "6438.457663100000000000",
+        #            "amount7d": "35657.785013800000000000",
+        #            "lastPrice": "25779.16",
+        #            "lastQuantity": "0.248403300000000000",
+        #            "bestBid": "25778.74",
+        #            "bestBidQuantity": "0.6520232",
+        #            "bestAsk": "25779.17",
+        #            "bestAskQuantity": "0.4956043",
+        #            "updateTimestamp": "1693965231406"
+        #        }
+        #    ]
         #
         return self.parse_tickers(response, symbols)
 
-    def parse_trade(self, trade, market=None):
+    def parse_trade(self, trade: dict, market: Market = None) -> Trade:
         #
         # fetchTrades(public)
         #
@@ -634,19 +870,28 @@ class latoken(Exchange):
             'fee': fee,
         }, market)
 
-    async def fetch_trades(self, symbol, since=None, limit=None, params={}):
+    async def fetch_trades(self, symbol: str, since: Int = None, limit: Int = None, params={}) -> List[Trade]:
+        """
+        get the list of most recent trades for a particular symbol
+
+        https://api.latoken.com/doc/v2/#tag/Trade/operation/getTradesByPair
+
+        :param str symbol: unified symbol of the market to fetch trades for
+        :param int [since]: timestamp in ms of the earliest trade to fetch
+        :param int [limit]: the maximum amount of trades to fetch
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns Trade[]: a list of `trade structures <https://docs.ccxt.com/#/?id=public-trades>`
+        """
         await self.load_markets()
         market = self.market(symbol)
-        request = {
+        request: dict = {
             'currency': market['baseId'],
             'quote': market['quoteId'],
             # 'from': str(since),  # milliseconds
-            # 'limit': limit,  # default 100
+            # 'limit': limit,  # default 100, limit 100
         }
-        if since is not None:
-            request['from'] = str(since)
         if limit is not None:
-            request['limit'] = limit  # default 50, max 100
+            request['limit'] = min(limit, 100)  # default 100, limit 100
         response = await self.publicGetTradeHistoryCurrencyQuote(self.extend(request, params))
         #
         #     [
@@ -657,24 +902,109 @@ class latoken(Exchange):
         #
         return self.parse_trades(response, market, since, limit)
 
-    async def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
+    async def fetch_trading_fee(self, symbol: str, params={}) -> TradingFeeInterface:
+        """
+        fetch the trading fees for a market
+
+        https://api.latoken.com/doc/v2/#tag/Trade/operation/getFeeByPair
+        https://api.latoken.com/doc/v2/#tag/Trade/operation/getAuthFeeByPair
+
+        :param str symbol: unified market symbol
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: a `fee structure <https://docs.ccxt.com/#/?id=fee-structure>`
+        """
+        options = self.safe_value(self.options, 'fetchTradingFee', {})
+        defaultMethod = self.safe_string(options, 'method', 'fetchPrivateTradingFee')
+        method = self.safe_string(params, 'method', defaultMethod)
+        params = self.omit(params, 'method')
+        if method == 'fetchPrivateTradingFee':
+            return await self.fetch_private_trading_fee(symbol, params)
+        elif method == 'fetchPublicTradingFee':
+            return await self.fetch_public_trading_fee(symbol, params)
+        else:
+            raise NotSupported(self.id + ' not support self method')
+
+    async def fetch_public_trading_fee(self, symbol: str, params={}):
         await self.load_markets()
-        request = {
+        market = self.market(symbol)
+        request: dict = {
+            'currency': market['baseId'],
+            'quote': market['quoteId'],
+        }
+        response = await self.publicGetTradeFeeCurrencyQuote(self.extend(request, params))
+        #
+        #     {
+        #         "makerFee": "0.004900000000000000",
+        #         "takerFee": "0.004900000000000000",
+        #         "type": "FEE_SCHEME_TYPE_PERCENT_QUOTE",
+        #         "take": "FEE_SCHEME_TAKE_PROPORTION"
+        #     }
+        #
+        return {
+            'info': response,
+            'symbol': market['symbol'],
+            'maker': self.safe_number(response, 'makerFee'),
+            'taker': self.safe_number(response, 'takerFee'),
+            'percentage': None,
+            'tierBased': None,
+        }
+
+    async def fetch_private_trading_fee(self, symbol: str, params={}):
+        await self.load_markets()
+        market = self.market(symbol)
+        request: dict = {
+            'currency': market['baseId'],
+            'quote': market['quoteId'],
+        }
+        response = await self.privateGetAuthTradeFeeCurrencyQuote(self.extend(request, params))
+        #
+        #     {
+        #         "makerFee": "0.004900000000000000",
+        #         "takerFee": "0.004900000000000000",
+        #         "type": "FEE_SCHEME_TYPE_PERCENT_QUOTE",
+        #         "take": "FEE_SCHEME_TAKE_PROPORTION"
+        #     }
+        #
+        return {
+            'info': response,
+            'symbol': market['symbol'],
+            'maker': self.safe_number(response, 'makerFee'),
+            'taker': self.safe_number(response, 'takerFee'),
+            'percentage': None,
+            'tierBased': None,
+        }
+
+    async def fetch_my_trades(self, symbol: Str = None, since: Int = None, limit: Int = None, params={}):
+        """
+        fetch all trades made by the user
+
+        https://api.latoken.com/doc/v2/#tag/Trade/operation/getTradesByTrader
+        https://api.latoken.com/doc/v2/#tag/Trade/operation/getTradesByAssetAndTrader
+
+        :param str symbol: unified market symbol
+        :param int [since]: the earliest time in ms to fetch trades for
+        :param int [limit]: the maximum number of trades structures to retrieve
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns Trade[]: a list of `trade structures <https://docs.ccxt.com/#/?id=trade-structure>`
+        """
+        await self.load_markets()
+        request: dict = {
             # 'currency': market['baseId'],
             # 'quote': market['quoteId'],
             # 'from': self.milliseconds(),
             # 'limit': limit,  # default '100'
         }
-        method = 'privateGetAuthTrade'
         market = None
+        if limit is not None:
+            request['limit'] = limit  # default 100
+        response = None
         if symbol is not None:
             market = self.market(symbol)
             request['currency'] = market['baseId']
             request['quote'] = market['quoteId']
-            method = 'privateGetAuthTradePairCurrencyQuote'
-        if limit is not None:
-            request['limit'] = limit  # default 100
-        response = await getattr(self, method)(self.extend(request, params))
+            response = await self.privateGetAuthTradePairCurrencyQuote(self.extend(request, params))
+        else:
+            response = await self.privateGetAuthTrade(self.extend(request, params))
         #
         #     [
         #         {
@@ -695,8 +1025,8 @@ class latoken(Exchange):
         #
         return self.parse_trades(response, market, since, limit)
 
-    def parse_order_status(self, status):
-        statuses = {
+    def parse_order_status(self, status: Str):
+        statuses: dict = {
             'ORDER_STATUS_PLACED': 'open',
             'ORDER_STATUS_CLOSED': 'closed',
             'ORDER_STATUS_CANCELLED': 'canceled',
@@ -704,34 +1034,34 @@ class latoken(Exchange):
         return self.safe_string(statuses, status, status)
 
     def parse_order_type(self, status):
-        statuses = {
+        statuses: dict = {
             'ORDER_TYPE_MARKET': 'market',
             'ORDER_TYPE_LIMIT': 'limit',
         }
         return self.safe_string(statuses, status, status)
 
-    def parse_time_in_force(self, timeInForce):
-        timeInForces = {
+    def parse_time_in_force(self, timeInForce: Str):
+        timeInForces: dict = {
             'ORDER_CONDITION_GOOD_TILL_CANCELLED': 'GTC',
             'ORDER_CONDITION_IMMEDIATE_OR_CANCEL': 'IOC',
             'ORDER_CONDITION_FILL_OR_KILL': 'FOK',
         }
         return self.safe_string(timeInForces, timeInForce, timeInForce)
 
-    def parse_order(self, order, market=None):
+    def parse_order(self, order: dict, market: Market = None) -> Order:
         #
         # createOrder
         #
-        #     {
-        #         "orderId":"1563460093.134037.704945@0370:2",
-        #         "cliOrdId":"",
-        #         "pairId":370,
-        #         "symbol":"ETHBTC",
-        #         "side":"sell",
-        #         "orderType":"limit",
-        #         "price":1.0,
-        #         "amount":1.0
-        #     }
+        #    {
+        #        "baseCurrency": "f7dac554-8139-4ff6-841f-0e586a5984a0",
+        #        "quoteCurrency": "a5a7a7a9-e2a3-43f9-8754-29a02f6b709b",
+        #        "side": "BID",
+        #        "clientOrderId": "my-wonderful-order-number-71566",
+        #        "price": "10103.19",
+        #        "stopPrice": "10103.19",
+        #        "quantity": "3.21",
+        #        "timestamp": 1568185507
+        #    }
         #
         # fetchOrder, fetchOpenOrders, fetchOrders
         #
@@ -777,7 +1107,8 @@ class latoken(Exchange):
         side = None
         if orderSide is not None:
             parts = orderSide.split('_')
-            side = self.safe_string_lower(parts, len(parts) - 1)
+            partsLength = len(parts)
+            side = self.safe_string_lower(parts, partsLength - 1)
         type = self.parse_order_type(self.safe_string(order, 'type'))
         price = self.safe_string(order, 'price')
         amount = self.safe_string(order, 'quantity')
@@ -792,7 +1123,7 @@ class latoken(Exchange):
                 status = 'open'
         clientOrderId = self.safe_string(order, 'clientOrderId')
         timeInForce = self.parse_time_in_force(self.safe_string(order, 'condition'))
-        return self.safe_order2({
+        return self.safe_order({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,
@@ -806,7 +1137,7 @@ class latoken(Exchange):
             'postOnly': None,
             'side': side,
             'price': price,
-            'stopPrice': None,
+            'triggerPrice': self.safe_string(order, 'stopPrice'),
             'cost': cost,
             'amount': amount,
             'filled': filled,
@@ -816,16 +1147,36 @@ class latoken(Exchange):
             'trades': None,
         }, market)
 
-    async def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
+    async def fetch_open_orders(self, symbol: Str = None, since: Int = None, limit: Int = None, params={}) -> List[Order]:
+        """
+        fetch all unfilled currently open orders
+
+        https://api.latoken.com/doc/v2/#tag/Order/operation/getMyActiveOrdersByPair
+        https://api.latoken.com/doc/v2/#tag/StopOrder/operation/getMyActiveStopOrdersByPair  # stop
+
+        :param str symbol: unified market symbol
+        :param int [since]: the earliest time in ms to fetch open orders for
+        :param int [limit]: the maximum number of  open orders structures to retrieve
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :param boolean [params.trigger]: True if fetching trigger orders
+        :returns Order[]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
+        """
         if symbol is None:
             raise ArgumentsRequired(self.id + ' fetchOpenOrders() requires a symbol argument')
         await self.load_markets()
+        response = None
+        isTrigger = self.safe_value_2(params, 'trigger', 'stop')
+        params = self.omit(params, 'stop')
+        # privateGetAuthOrderActive doesn't work even though its listed at https://api.latoken.com/doc/v2/#tag/Order/operation/getMyActiveOrders
         market = self.market(symbol)
-        request = {
+        request: dict = {
             'currency': market['baseId'],
             'quote': market['quoteId'],
         }
-        response = await self.privateGetAuthOrderPairCurrencyQuoteActive(self.extend(request, params))
+        if isTrigger:
+            response = await self.privateGetAuthStopOrderPairCurrencyQuoteActive(self.extend(request, params))
+        else:
+            response = await self.privateGetAuthOrderPairCurrencyQuoteActive(self.extend(request, params))
         #
         #     [
         #         {
@@ -850,24 +1201,48 @@ class latoken(Exchange):
         #
         return self.parse_orders(response, market, since, limit)
 
-    async def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
+    async def fetch_orders(self, symbol: Str = None, since: Int = None, limit: Int = None, params={}) -> List[Order]:
+        """
+        fetches information on multiple orders made by the user
+
+        https://api.latoken.com/doc/v2/#tag/Order/operation/getMyOrders
+        https://api.latoken.com/doc/v2/#tag/Order/operation/getMyOrdersByPair
+        https://api.latoken.com/doc/v2/#tag/StopOrder/operation/getMyStopOrders       # stop
+        https://api.latoken.com/doc/v2/#tag/StopOrder/operation/getMyStopOrdersByPair  # stop
+
+        :param str symbol: unified market symbol of the market orders were made in
+        :param int [since]: the earliest time in ms to fetch orders for
+        :param int [limit]: the maximum number of order structures to retrieve
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :param boolean [params.trigger]: True if fetching trigger orders
+        :returns Order[]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
+        """
         await self.load_markets()
-        request = {
+        request: dict = {
             # 'currency': market['baseId'],
             # 'quote': market['quoteId'],
             # 'from': self.milliseconds(),
             # 'limit': limit,  # default '100'
         }
-        method = 'privateGetAuthOrder'
         market = None
+        isTrigger = self.safe_value_2(params, 'trigger', 'stop')
+        params = self.omit(params, ['stop', 'trigger'])
+        if limit is not None:
+            request['limit'] = limit  # default 100
+        response = None
         if symbol is not None:
             market = self.market(symbol)
             request['currency'] = market['baseId']
             request['quote'] = market['quoteId']
-            method = 'privateGetAuthOrderPairCurrencyQuote'
-        if limit is not None:
-            request['limit'] = limit  # default 100
-        response = await getattr(self, method)(self.extend(request, params))
+            if isTrigger:
+                response = await self.privateGetAuthStopOrderPairCurrencyQuote(self.extend(request, params))
+            else:
+                response = await self.privateGetAuthOrderPairCurrencyQuote(self.extend(request, params))
+        else:
+            if isTrigger:
+                response = await self.privateGetAuthStopOrder(self.extend(request, params))
+            else:
+                response = await self.privateGetAuthOrder(self.extend(request, params))
         #
         #     [
         #         {
@@ -892,12 +1267,30 @@ class latoken(Exchange):
         #
         return self.parse_orders(response, market, since, limit)
 
-    async def fetch_order(self, id, symbol=None, params={}):
+    async def fetch_order(self, id: str, symbol: Str = None, params={}):
+        """
+        fetches information on an order made by the user
+
+        https://api.latoken.com/doc/v2/#tag/Order/operation/getOrderById
+        https://api.latoken.com/doc/v2/#tag/StopOrder/operation/getStopOrderById
+
+        :param str id: order id
+        :param str [symbol]: not used by latoken fetchOrder
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :param boolean [params.trigger]: True if fetching a trigger order
+        :returns dict: An `order structure <https://docs.ccxt.com/#/?id=order-structure>`
+        """
         await self.load_markets()
-        request = {
+        request: dict = {
             'id': id,
         }
-        response = await self.privateGetAuthOrderGetOrderId(self.extend(request, params))
+        isTrigger = self.safe_value_2(params, 'trigger', 'stop')
+        params = self.omit(params, ['stop', 'trigger'])
+        response = None
+        if isTrigger:
+            response = await self.privateGetAuthStopOrderGetOrderId(self.extend(request, params))
+        else:
+            response = await self.privateGetAuthOrderGetOrderId(self.extend(request, params))
         #
         #     {
         #         "id":"a76bd262-3560-4bfb-98ac-1cedd394f4fc",
@@ -920,11 +1313,30 @@ class latoken(Exchange):
         #
         return self.parse_order(response)
 
-    async def create_order(self, symbol, type, side, amount, price=None, params={}):
+    async def create_order(self, symbol: str, type: OrderType, side: OrderSide, amount: float, price: Num = None, params={}):
+        """
+        create a trade order
+
+        https://api.latoken.com/doc/v2/#tag/Order/operation/placeOrder
+        https://api.latoken.com/doc/v2/#tag/StopOrder/operation/placeStopOrder  # stop
+
+        :param str symbol: unified symbol of the market to create an order in
+        :param str type: 'market' or 'limit'
+        :param str side: 'buy' or 'sell'
+        :param float amount: how much of currency you want to trade in units of base currency
+        :param float [price]: the price at which the order is to be fulfilled, in units of the quote currency, ignored in market orders
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :param float [params.triggerPrice]: the price at which a trigger order is triggered at
+
+ EXCHANGE SPECIFIC PARAMETERS
+        :param str [params.condition]: "GTC", "IOC", or  "FOK"
+        :param str [params.clientOrderId]: [0 .. 50] characters, client's custom order id(free field for your convenience)
+        :returns dict: an `order structure <https://docs.ccxt.com/#/?id=order-structure>`
+        """
         await self.load_markets()
         market = self.market(symbol)
         uppercaseType = type.upper()
-        request = {
+        request: dict = {
             'baseCurrency': market['baseId'],
             'quoteCurrency': market['quoteId'],
             'side': side.upper(),  # "BUY", "BID", "SELL", "ASK"
@@ -933,32 +1345,57 @@ class latoken(Exchange):
             'clientOrderId': self.uuid(),  # 50 characters max
             # 'price': self.price_to_precision(symbol, price),
             # 'quantity': self.amount_to_precision(symbol, amount),
+            'quantity': self.amount_to_precision(symbol, amount),
+            'timestamp': self.seconds(),
         }
         if uppercaseType == 'LIMIT':
             request['price'] = self.price_to_precision(symbol, price)
-        request['quantity'] = self.amount_to_precision(symbol, amount)
-        request['timestamp'] = self.seconds()
-        response = await self.privatePostAuthOrderPlace(self.extend(request, params))
+        triggerPrice = self.safe_string_2(params, 'triggerPrice', 'stopPrice')
+        params = self.omit(params, ['triggerPrice', 'stopPrice'])
+        response = None
+        if triggerPrice is not None:
+            request['stopPrice'] = self.price_to_precision(symbol, triggerPrice)
+            response = await self.privatePostAuthStopOrderPlace(self.extend(request, params))
+        else:
+            response = await self.privatePostAuthOrderPlace(self.extend(request, params))
         #
-        #     {
-        #         "orderId":"1563460093.134037.704945@0370:2",
-        #         "cliOrdId":"",
-        #         "pairId":370,
-        #         "symbol":"ETHBTC",
-        #         "side":"sell",
-        #         "orderType":"limit",
-        #         "price":1.0,
-        #         "amount":1.0
-        #     }
+        #    {
+        #        "baseCurrency": "f7dac554-8139-4ff6-841f-0e586a5984a0",
+        #        "quoteCurrency": "a5a7a7a9-e2a3-43f9-8754-29a02f6b709b",
+        #        "side": "BID",
+        #        "clientOrderId": "my-wonderful-order-number-71566",
+        #        "price": "10103.19",
+        #        "stopPrice": "10103.19",
+        #        "quantity": "3.21",
+        #        "timestamp": 1568185507
+        #    }
         #
         return self.parse_order(response, market)
 
-    async def cancel_order(self, id, symbol=None, params={}):
+    async def cancel_order(self, id: str, symbol: Str = None, params={}):
+        """
+        cancels an open order
+
+        https://api.latoken.com/doc/v2/#tag/Order/operation/cancelOrder
+        https://api.latoken.com/doc/v2/#tag/StopOrder/operation/cancelStopOrder  # stop
+
+        :param str id: order id
+        :param str symbol: not used by latoken cancelOrder()
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :param boolean [params.trigger]: True if cancelling a trigger order
+        :returns dict: An `order structure <https://docs.ccxt.com/#/?id=order-structure>`
+        """
         await self.load_markets()
-        request = {
+        request: dict = {
             'id': id,
         }
-        response = await self.privatePostAuthOrderCancel(self.extend(request, params))
+        isTrigger = self.safe_value_2(params, 'trigger', 'stop')
+        params = self.omit(params, ['stop', 'trigger'])
+        response = None
+        if isTrigger:
+            response = await self.privatePostAuthStopOrderCancel(self.extend(request, params))
+        else:
+            response = await self.privatePostAuthOrderCancel(self.extend(request, params))
         #
         #     {
         #         "id": "12345678-1234-1244-1244-123456789012",
@@ -970,31 +1407,67 @@ class latoken(Exchange):
         #
         return self.parse_order(response)
 
-    async def cancel_all_orders(self, symbol=None, params={}):
+    async def cancel_all_orders(self, symbol: Str = None, params={}):
+        """
+        cancel all open orders in a market
+
+        https://api.latoken.com/doc/v2/#tag/Order/operation/cancelAllOrders
+        https://api.latoken.com/doc/v2/#tag/Order/operation/cancelAllOrdersByPair
+
+        :param str symbol: unified market symbol of the market to cancel orders in
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :param boolean [params.trigger]: True if cancelling trigger orders
+        :returns dict[]: a list of `order structures <https://docs.ccxt.com/#/?id=order-structure>`
+        """
         await self.load_markets()
-        request = {
+        request: dict = {
             # 'currency': market['baseId'],
             # 'quote': market['quoteId'],
         }
-        method = 'privatePostAuthOrderCancelAll'
         market = None
+        isTrigger = self.safe_value_2(params, 'trigger', 'stop')
+        params = self.omit(params, ['stop', 'trigger'])
+        response = None
         if symbol is not None:
             market = self.market(symbol)
             request['currency'] = market['baseId']
             request['quote'] = market['quoteId']
-            method = 'privatePostAuthOrderCancelAllCurrencyQuote'
-        response = await getattr(self, method)(self.extend(request, params))
+            if isTrigger:
+                response = await self.privatePostAuthStopOrderCancelAllCurrencyQuote(self.extend(request, params))
+            else:
+                response = await self.privatePostAuthOrderCancelAllCurrencyQuote(self.extend(request, params))
+        else:
+            if isTrigger:
+                response = await self.privatePostAuthStopOrderCancelAll(self.extend(request, params))
+            else:
+                response = await self.privatePostAuthOrderCancelAll(self.extend(request, params))
         #
         #     {
         #         "message":"cancellation request successfully submitted",
         #         "status":"SUCCESS"
         #     }
         #
-        return response
+        return [
+            self.safe_order({
+                'info': response,
+            }),
+        ]
 
-    async def fetch_transactions(self, code=None, since=None, limit=None, params={}):
+    async def fetch_transactions(self, code: Str = None, since: Int = None, limit: Int = None, params={}):
+        """
+ @deprecated
+        use fetchDepositsWithdrawals instead
+
+        https://api.latoken.com/doc/v2/#tag/Transaction/operation/getUserTransactions
+
+        :param str code: unified currency code for the currency of the transactions, default is None
+        :param int [since]: timestamp in ms of the earliest transaction, default is None
+        :param int [limit]: max number of transactions to return, default is None
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: a list of `transaction structure <https://docs.ccxt.com/#/?id=transaction-structure>`
+        """
         await self.load_markets()
-        request = {
+        request: dict = {
             # 'page': '1',
             # 'size': 100,
         }
@@ -1028,10 +1501,10 @@ class latoken(Exchange):
         currency = None
         if code is not None:
             currency = self.currency(code)
-        content = self.safe_value(response, 'content', [])
+        content = self.safe_list(response, 'content', [])
         return self.parse_transactions(content, currency, since, limit)
 
-    def parse_transaction(self, transaction, currency=None):
+    def parse_transaction(self, transaction: dict, currency: Currency = None) -> Transaction:
         #
         #     {
         #         "id":"fbf7d0d1-2629-4ad8-9def-7a1dba423362",
@@ -1057,20 +1530,18 @@ class latoken(Exchange):
         status = self.parse_transaction_status(self.safe_string(transaction, 'status'))
         amount = self.safe_number(transaction, 'amount')
         addressFrom = self.safe_string(transaction, 'senderAddress')
-        if addressFrom == '':
-            addressFrom = None
         addressTo = self.safe_string(transaction, 'recipientAddress')
-        if addressTo == '':
-            addressTo = None
         txid = self.safe_string(transaction, 'transactionHash')
         tagTo = self.safe_string(transaction, 'memo')
-        fee = None
+        fee = {
+            'currency': None,
+            'cost': None,
+            'rate': None,
+        }
         feeCost = self.safe_number(transaction, 'transactionFee')
         if feeCost is not None:
-            fee = {
-                'cost': feeCost,
-                'currency': code,
-            }
+            fee['cost'] = feeCost
+            fee['currency'] = code
         type = self.parse_transaction_type(self.safe_string(transaction, 'type'))
         return {
             'info': transaction,
@@ -1078,6 +1549,7 @@ class latoken(Exchange):
             'txid': txid,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': None,
             'addressFrom': addressFrom,
             'addressTo': addressTo,
             'address': addressTo,
@@ -1089,22 +1561,176 @@ class latoken(Exchange):
             'currency': code,
             'status': status,
             'updated': None,
+            'comment': None,
+            'internal': None,
             'fee': fee,
         }
 
-    def parse_transaction_status(self, status):
-        statuses = {
+    def parse_transaction_status(self, status: Str):
+        statuses: dict = {
             'TRANSACTION_STATUS_CONFIRMED': 'ok',
             'TRANSACTION_STATUS_EXECUTED': 'ok',
+            'TRANSACTION_STATUS_CHECKING': 'pending',
+            'TRANSACTION_STATUS_CANCELLED': 'canceled',
         }
         return self.safe_string(statuses, status, status)
 
     def parse_transaction_type(self, type):
-        types = {
+        types: dict = {
             'TRANSACTION_TYPE_DEPOSIT': 'deposit',
             'TRANSACTION_TYPE_WITHDRAWAL': 'withdrawal',
         }
         return self.safe_string(types, type, type)
+
+    async def fetch_transfers(self, code: Str = None, since: Int = None, limit: Int = None, params={}) -> List[TransferEntry]:
+        """
+        fetch a history of internal transfers made on an account
+
+        https://api.latoken.com/doc/v2/#tag/Transfer/operation/getUsersTransfers
+
+        :param str code: unified currency code of the currency transferred
+        :param int [since]: the earliest time in ms to fetch transfers for
+        :param int [limit]: the maximum number of  transfers structures to retrieve
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict[]: a list of `transfer structures <https://docs.ccxt.com/#/?id=transfer-structure>`
+        """
+        await self.load_markets()
+        currency = self.currency(code)
+        response = await self.privateGetAuthTransfer(params)
+        #
+        #     {
+        #         "hasNext": True,
+        #         "content": [
+        #             {
+        #             "id": "ebd6312f-cb4f-45d1-9409-4b0b3027f21e",
+        #             "status": "TRANSFER_STATUS_COMPLETED",
+        #             "type": "TRANSFER_TYPE_WITHDRAW_SPOT",
+        #             "fromAccount": "c429c551-adbb-4078-b74b-276bea308a36",
+        #             "toAccount": "631c6203-bd62-4734-a04d-9b2a951f43b9",
+        #             "transferringFunds": 1259.0321785,
+        #             "usdValue": 1259.032179,
+        #             "rejectReason": null,
+        #             "timestamp": 1633515579530,
+        #             "direction": "INTERNAL",
+        #             "method": "TRANSFER_METHOD_UNKNOWN",
+        #             "recipient": null,
+        #             "sender": null,
+        #             "currency": "0c3a106d-bde3-4c13-a26e-3fd2394529e5",
+        #             "codeRequired": False,
+        #             "fromUser": "ce555f3f-585d-46fb-9ae6-487f66738073",
+        #             "toUser": "ce555f3f-585d-46fb-9ae6-487f66738073",
+        #             "fee": 0
+        #             },
+        #             ...
+        #         ],
+        #         "first": True,
+        #         "pageSize": 20,
+        #         "hasContent": True
+        #     }
+        #
+        transfers = self.safe_list(response, 'content', [])
+        return self.parse_transfers(transfers, currency, since, limit)
+
+    async def transfer(self, code: str, amount: float, fromAccount: str, toAccount: str, params={}) -> TransferEntry:
+        """
+        transfer currency internally between wallets on the same account
+
+        https://api.latoken.com/doc/v2/#tag/Transfer/operation/transferByEmail
+        https://api.latoken.com/doc/v2/#tag/Transfer/operation/transferById
+        https://api.latoken.com/doc/v2/#tag/Transfer/operation/transferByPhone
+
+        :param str code: unified currency code
+        :param float amount: amount to transfer
+        :param str fromAccount: account to transfer from
+        :param str toAccount: account to transfer to
+        :param dict [params]: extra parameters specific to the exchange API endpoint
+        :returns dict: a `transfer structure <https://docs.ccxt.com/#/?id=transfer-structure>`
+        """
+        await self.load_markets()
+        currency = self.currency(code)
+        request: dict = {
+            'currency': currency['id'],
+            'recipient': toAccount,
+            'value': self.currency_to_precision(code, amount),
+        }
+        response = None
+        if toAccount.find('@') >= 0:
+            response = await self.privatePostAuthTransferEmail(self.extend(request, params))
+        elif len(toAccount) == 36:
+            response = await self.privatePostAuthTransferId(self.extend(request, params))
+        else:
+            response = await self.privatePostAuthTransferPhone(self.extend(request, params))
+        #
+        #     {
+        #         "id": "e6fc4ace-7750-44e4-b7e9-6af038ac7107",
+        #         "status": "TRANSFER_STATUS_COMPLETED",
+        #         "type": "TRANSFER_TYPE_DEPOSIT_SPOT",
+        #         "fromAccount": "3bf61015-bf32-47a6-b237-c9f70df772ad",
+        #         "toAccount": "355eb279-7c7e-4515-814a-575a49dc0325",
+        #         "transferringFunds": "500000.000000000000000000",
+        #         "usdValue": "0.000000000000000000",
+        #         "rejectReason": "",
+        #         "timestamp": 1576844438402,
+        #         "direction": "INTERNAL",
+        #         "method": "TRANSFER_METHOD_UNKNOWN",
+        #         "recipient": "",
+        #         "sender": "",
+        #         "currency": "40af7879-a8cc-4576-a42d-7d2749821b58",
+        #         "codeRequired": False,
+        #         "fromUser": "cd555555-666d-46fb-9ae6-487f66738073",
+        #         "toUser": "cd555555-666d-46fb-9ae6-487f66738073",
+        #         "fee": 0
+        #     }
+        #
+        return self.parse_transfer(response)
+
+    def parse_transfer(self, transfer: dict, currency: Currency = None) -> TransferEntry:
+        #
+        #     {
+        #         "id": "e6fc4ace-7750-44e4-b7e9-6af038ac7107",
+        #         "status": "TRANSFER_STATUS_COMPLETED",
+        #         "type": "TRANSFER_TYPE_DEPOSIT_SPOT",
+        #         "fromAccount": "3bf61015-bf32-47a6-b237-c9f70df772ad",
+        #         "toAccount": "355eb279-7c7e-4515-814a-575a49dc0325",
+        #         "transferringFunds": "500000.000000000000000000",
+        #         "usdValue": "0.000000000000000000",
+        #         "rejectReason": "",
+        #         "timestamp": 1576844438402,
+        #         "direction": "INTERNAL",
+        #         "method": "TRANSFER_METHOD_UNKNOWN",
+        #         "recipient": "",
+        #         "sender": "",
+        #         "currency": "40af7879-a8cc-4576-a42d-7d2749821b58",
+        #         "codeRequired": False,
+        #         "fromUser": "cd555555-666d-46fb-9ae6-487f66738073",
+        #         "toUser": "cd555555-666d-46fb-9ae6-487f66738073",
+        #         "fee": 0
+        #     }
+        #
+        timestamp = self.safe_timestamp(transfer, 'timestamp')
+        currencyId = self.safe_string(transfer, 'currency')
+        status = self.safe_string(transfer, 'status')
+        return {
+            'info': transfer,
+            'id': self.safe_string(transfer, 'id'),
+            'timestamp': self.safe_integer(transfer, 'timestamp'),
+            'datetime': self.iso8601(timestamp),
+            'currency': self.safe_currency_code(currencyId, currency),
+            'amount': self.safe_number(transfer, 'transferringFunds'),
+            'fromAccount': self.safe_string(transfer, 'fromAccount'),
+            'toAccount': self.safe_string(transfer, 'toAccount'),
+            'status': self.parse_transfer_status(status),
+        }
+
+    def parse_transfer_status(self, status: Str) -> Str:
+        statuses: dict = {
+            'TRANSFER_STATUS_COMPLETED': 'ok',
+            'TRANSFER_STATUS_PENDING': 'pending',
+            'TRANSFER_STATUS_REJECTED': 'failed',
+            'TRANSFER_STATUS_UNVERIFIED': 'pending',
+            'TRANSFER_STATUS_CANCELLED': 'canceled',
+        }
+        return self.safe_string(statuses, status, status)
 
     def sign(self, path, api='public', method='GET', params=None, headers=None, body=None):
         request = '/' + self.version + '/' + self.implode_params(path, params)
@@ -1126,12 +1752,12 @@ class latoken(Exchange):
             if method == 'POST':
                 headers['Content-Type'] = 'application/json'
                 body = self.json(query)
-        url = self.urls['api'] + requestString
+        url = self.urls['api']['rest'] + requestString
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
-    def handle_errors(self, code, reason, url, method, headers, body, response, requestHeaders, requestBody):
+    def handle_errors(self, code: int, reason: str, url: str, method: str, headers: dict, body: str, response, requestHeaders, requestBody):
         if not response:
-            return
+            return None
         #
         # {"result":false,"message":"invalid API key, signature or digest","error":"BAD_REQUEST","status":"FAILURE"}
         # {"result":false,"message":"request expired or bad <timeAlive>/<timestamp> format","error":"BAD_REQUEST","status":"FAILURE"}
@@ -1143,9 +1769,10 @@ class latoken(Exchange):
         if message is not None:
             self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)
-        error = self.safe_string(response, 'error')
+        error = self.safe_value(response, 'error')
         errorMessage = self.safe_string(error, 'message')
         if (error is not None) or (errorMessage is not None):
             self.throw_exactly_matched_exception(self.exceptions['exact'], error, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], body, feedback)
             raise ExchangeError(feedback)  # unknown message
+        return None

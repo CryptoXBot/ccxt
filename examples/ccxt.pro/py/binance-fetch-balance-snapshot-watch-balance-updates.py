@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
-import ccxtpro
-from asyncio import get_event_loop
+import ccxt.pro
+from asyncio import run
 
 
-print('CCXT Pro Version:', ccxtpro.__version__)
+print('CCXT Version:', ccxt.__version__)
 
 
 # This example will run silent and will return your balance only when the balance is updated.
@@ -28,7 +28,7 @@ async def watch_balance(exchange):
     while True:
         try:
             update = await exchange.watch_balance()
-            balance = exchange.extend(balance, update)
+            balance = exchange.deep_extend(balance, update)
             # it will print the balance update when the balance changes
             # if the balance remains unchanged the exchange will not send it
             print('---------------------------------------------------------')
@@ -42,7 +42,7 @@ async def watch_balance(exchange):
 
 
 async def main():
-    exchange = ccxtpro.binance({
+    exchange = ccxt.pro.binance({
         'apiKey': 'YOUR_API_KEY',
         'secret': 'YOUR_SECRET',
     })
@@ -50,5 +50,4 @@ async def main():
     await exchange.close()
 
 
-loop = get_event_loop()
-loop.run_until_complete(main())
+run(main())
